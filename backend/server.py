@@ -23,15 +23,13 @@ Edge cases handled:
 import asyncio
 import json
 import os
-import random
 import sys
 import time
 import uuid
-from collections import defaultdict, deque
 from datetime import datetime, timezone
 from typing import Dict, List, Optional
 
-import numpy as np
+import aiohttp
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
@@ -56,75 +54,9 @@ alerts_store:    List[dict]               = []   # priority-sorted alert log
 machine_state:   Dict[str, dict]          = {}   # latest reading per machine
 alert_priority_queue: List[dict]          = []   # sorted by risk_score desc
 
-MACHINES = ["CNC_01", "CNC_02", "HVAC_01", "PUMP_01"]
-
-# Simulated "wear" state per machine (increases over time to simulate drift)
-_wear: Dict[str, float] = {m: 0.0 for m in MACHINES}
-_rng = np.random.default_rng(int(time.time()))
-
-
-# ── Normal operating ranges ───────────────────────────────────────────────────
-MACHINE_NORMS = {
-    "CNC_01":  {"temperature_C": (65, 90),  "vibration_mm_s": (0.6, 2.8), "rpm": (1250, 1580), "current_A": (10.5, 15.5)},
-    "CNC_02":  {"temperature_C": (58, 88),  "vibration_mm_s": (0.5, 2.6), "rpm": (1150, 1530), "current_A": (9.5,  14.5)},
-    "HVAC_01": {"temperature_C": (32, 52),  "vibration_mm_s": (0.2, 1.4), "rpm": (820,  1180), "current_A": (5.2,  9.8)},
-    "PUMP_01": {"temperature_C": (42, 72),  "vibration_mm_s": (0.3, 1.9), "rpm": (970,  1380), "current_A": (7.2,  12.8)},
-}
-
-# Fault injection schedule: every ~120 s a random machine gets a fault burst
-_next_fault_time: Dict[str, float] = {m: time.time() + random.randint(60, 180) for m in MACHINES}
-_fault_active:    Dict[str, int]   = {m: 0 for m in MACHINES}   # fault remaining ticks
-
-
-def _simulate_reading(machine_id: str) -> dict:
-    """Generate a realistic (possibly anomalous) sensor reading."""
-    norms = MACHINE_NORMS[machine_id]
-    wear  = _wear[machine_id]
-
-    def sample(lo, hi, noise_frac=0.08):
-        mid  = (lo + hi) / 2
-        half = (hi - lo) / 2
-        return float(_rng.normal(mid + wear * 0.3, half * noise_frac * 6))
-
-    t_C  = sample(*norms["temperature_C"])
-    v_ms = sample(*norms["vibration_mm_s"])
-    rpm  = sample(*norms["rpm"])
-    curr = sample(*norms["current_A"])
-
-    status = "running"
-    now    = time.time()
-
-    # Fault injection
-    if now >= _next_fault_time[machine_id] and _fault_active[machine_id] == 0:
-        _fault_active[machine_id] = random.randint(3, 8)           # fault lasts N ticks
-        _next_fault_time[machine_id] = now + random.randint(90, 200)
-
-    if _fault_active[machine_id] > 0:
-        severity = 1.0 - (_fault_active[machine_id] / 8.0)          # ramps up
-        t_C  += _rng.uniform(12, 22) * (0.5 + severity)
-        v_ms += _rng.uniform(1.5, 4.0) * (0.5 + severity)
-        curr += _rng.uniform(2.0, 5.0) * (0.5 + severity)
-        status = "fault" if severity > 0.5 else "warning"
-        _fault_active[machine_id] -= 1
-
-    # Transient single-tick spike (noise, ~3% chance)
-    elif random.random() < 0.03:
-        t_C  += _rng.normal(0, 8)
-        v_ms += _rng.normal(0, 0.8)
-        status = "warning"
-
-    # Gradual wear accumulation
-    _wear[machine_id] += 0.0005
-
-    return {
-        "machine_id":     machine_id,
-        "timestamp":      datetime.now(timezone.utc).isoformat(),
-        "temperature_C":  round(t_C,  2),
-        "vibration_mm_s": round(max(v_ms, 0.01), 3),
-        "rpm":            round(max(rpm, 100.0), 1),
-        "current_A":      round(max(curr, 0.5), 2),
-        "status":         status,
-    }
+MACHINES = ["CNC_01", "CNC_02", "PUMP_03", "CONVEYOR_04"]
+NODE_BASE_URL = os.environ.get("MALENDAU_BASE_URL", "http://localhost:3000")
+HTTP_TIMEOUT = aiohttp.ClientTimeout(total=20)
 
 
 # ── Startup ───────────────────────────────────────────────────────────────────
@@ -140,6 +72,62 @@ async def startup():
         scorer_registry = None
 
 
+async def _request_node(method: str, path: str, *, json_body: Optional[dict] = None):
+    url = f"{NODE_BASE_URL}{path}"
+    try:
+        async with aiohttp.ClientSession(timeout=HTTP_TIMEOUT) as session:
+            async with session.request(method, url, json=json_body) as resp:
+                if resp.status >= 400:
+                    detail = await resp.text()
+                    raise HTTPException(status_code=resp.status, detail=detail or f"Node API error for {path}")
+                return await resp.json()
+    except HTTPException:
+        raise
+    except aiohttp.ClientError as exc:
+        raise HTTPException(status_code=503, detail=f"Node API unavailable at {NODE_BASE_URL}: {exc}") from exc
+
+
+def _record_local_alert(machine_id: str, reason: str, risk_score: float, sensor_data: Optional[dict],
+                        *, node_alert_id: Optional[str] = None, timestamp: Optional[str] = None,
+                        auto: bool = False) -> dict:
+    alert = {
+        "alert_id": str(uuid.uuid4())[:8],
+        "node_alert_id": node_alert_id,
+        "machine_id": machine_id,
+        "reason": reason,
+        "risk_score": risk_score,
+        "timestamp": timestamp or datetime.now(timezone.utc).isoformat(),
+        "sensor_data": sensor_data or {},
+        "acknowledged": False,
+        "auto": auto,
+    }
+    alerts_store.append(alert)
+    alerts_store.sort(key=lambda a: a["risk_score"], reverse=True)
+    return alert
+
+
+def _enrich_node_alerts(node_alerts: List[dict], limit: int) -> dict:
+    local_by_node_id = {
+        alert["node_alert_id"]: alert
+        for alert in alerts_store
+        if alert.get("node_alert_id")
+    }
+    enriched = []
+    for alert in node_alerts[:limit]:
+        local = local_by_node_id.get(alert.get("id"))
+        enriched.append({
+            "alert_id": alert.get("id") or (local or {}).get("alert_id"),
+            "machine_id": alert.get("machine_id"),
+            "reason": alert.get("reason"),
+            "risk_score": (local or {}).get("risk_score", 0.0),
+            "timestamp": alert.get("triggered_at") or (local or {}).get("timestamp"),
+            "sensor_data": alert.get("reading") or (local or {}).get("sensor_data", {}),
+            "acknowledged": False,
+            "auto": (local or {}).get("auto", False),
+        })
+    return {"count": len(node_alerts), "alerts": enriched}
+
+
 # ── SSE stream endpoint ───────────────────────────────────────────────────────
 @app.get("/stream/{machine_id}")
 async def stream(machine_id: str, request: Request):
@@ -148,28 +136,42 @@ async def stream(machine_id: str, request: Request):
 
     async def generator():
         consecutive_gaps = 0
-        while True:
-            if await request.is_disconnected():
-                break
+        timeout = aiohttp.ClientTimeout(total=None, sock_read=15)
+
+        while not await request.is_disconnected():
             try:
-                reading = _simulate_reading(machine_id)
+                async with aiohttp.ClientSession(timeout=timeout) as session:
+                    async with session.get(f"{NODE_BASE_URL}/stream/{machine_id}") as resp:
+                        if resp.status != 200:
+                            raise RuntimeError(f"Node stream returned HTTP {resp.status}")
 
-                # Score if model available
-                if scorer_registry:
-                    scored = scorer_registry.score(machine_id, reading)
-                else:
-                    scored = {**reading, "risk_score": 0.0, "risk_level": "unknown",
-                              "explanation": "Model not loaded."}
+                        async for raw_line in resp.content:
+                            if await request.is_disconnected():
+                                return
 
-                machine_state[machine_id] = scored
+                            line = raw_line.decode().strip()
+                            if not line or not line.startswith("data:"):
+                                continue
 
-                # Auto-raise alert if critical
-                if scored.get("risk_level") == "critical" and not scored.get("suppressed"):
-                    _raise_alert_internal(machine_id, scored)
+                            reading = json.loads(line[5:].strip())
 
-                consecutive_gaps = 0
-                yield f"data: {json.dumps(scored)}\n\n"
-                await asyncio.sleep(1.0)
+                            if scorer_registry:
+                                scored = scorer_registry.score(machine_id, reading)
+                            else:
+                                scored = {
+                                    **reading,
+                                    "risk_score": 0.0,
+                                    "risk_level": "unknown",
+                                    "explanation": "Model not loaded.",
+                                }
+
+                            machine_state[machine_id] = scored
+
+                            if scored.get("risk_level") == "critical" and not scored.get("suppressed"):
+                                await _raise_alert_internal(machine_id, scored)
+
+                            consecutive_gaps = 0
+                            yield f"data: {json.dumps(scored)}\n\n"
 
             except asyncio.CancelledError:
                 break
@@ -179,11 +181,11 @@ async def stream(machine_id: str, request: Request):
                     "machine_id": machine_id,
                     "timestamp":  datetime.now(timezone.utc).isoformat(),
                     "error":      str(exc),
-                    "signal":     "data_absent",             # absence is a signal
+                    "signal":     "data_absent",
                     "consecutive_gaps": consecutive_gaps,
                 }
                 yield f"data: {json.dumps(gap_event)}\n\n"
-                await asyncio.sleep(2.0)
+                await asyncio.sleep(min(2 * consecutive_gaps, 10))
 
     return StreamingResponse(generator(), media_type="text/event-stream",
                              headers={"Cache-Control": "no-cache",
@@ -195,15 +197,9 @@ async def stream(machine_id: str, request: Request):
 async def get_history(machine_id: str, limit: int = 500):
     if machine_id not in MACHINES:
         raise HTTPException(status_code=404, detail=f"Unknown machine_id: {machine_id}")
-
-    history_csv = os.path.join(os.path.dirname(__file__), "../data/history.csv")
-    if not os.path.exists(history_csv):
-        raise HTTPException(status_code=503, detail="Historical data not yet generated. Run train_model.py first.")
-
-    import pandas as pd
-    df = pd.read_csv(history_csv, parse_dates=["timestamp"])
-    df = df[df["machine_id"] == machine_id].tail(limit)
-    return {"machine_id": machine_id, "count": len(df), "data": df.to_dict(orient="records")}
+    data = await _request_node("GET", f"/history/{machine_id}")
+    readings = data.get("readings", [])[-limit:]
+    return {"machine_id": machine_id, "count": len(readings), "data": readings}
 
 
 # ── Alert endpoint ────────────────────────────────────────────────────────────
@@ -216,21 +212,24 @@ class AlertRequest(BaseModel):
 
 @app.post("/alert")
 async def raise_alert(payload: AlertRequest):
-    alert = {
-        "alert_id":   str(uuid.uuid4())[:8],
+    node_data = await _request_node("POST", "/alert", json_body={
         "machine_id": payload.machine_id,
-        "reason":     payload.reason,
-        "risk_score": payload.risk_score,
-        "timestamp":  datetime.now(timezone.utc).isoformat(),
-        "sensor_data": payload.sensor_data or {},
-        "acknowledged": False,
-    }
-    alerts_store.append(alert)
-    alerts_store.sort(key=lambda a: a["risk_score"], reverse=True)
+        "reason": payload.reason,
+        "reading": payload.sensor_data or {},
+    })
+    node_alert = node_data.get("alert", {})
+    alert = _record_local_alert(
+        payload.machine_id,
+        payload.reason,
+        payload.risk_score,
+        payload.sensor_data,
+        node_alert_id=node_alert.get("id"),
+        timestamp=node_alert.get("triggered_at"),
+    )
     return {"status": "alert_raised", "alert": alert}
 
 
-def _raise_alert_internal(machine_id: str, scored: dict):
+async def _raise_alert_internal(machine_id: str, scored: dict):
     """Auto-raise alert from agent loop (deduped within 30s per machine)."""
     now = time.time()
     for a in reversed(alerts_store[-20:]):
@@ -238,18 +237,22 @@ def _raise_alert_internal(machine_id: str, scored: dict):
             ts = datetime.fromisoformat(a["timestamp"]).timestamp()
             if now - ts < 30:
                 return   # dedupe: already alerted this machine recently
-    alert = {
-        "alert_id":    str(uuid.uuid4())[:8],
-        "machine_id":  machine_id,
-        "reason":      scored.get("explanation", "Critical anomaly detected."),
-        "risk_score":  scored.get("risk_score", 1.0),
-        "timestamp":   datetime.now(timezone.utc).isoformat(),
-        "sensor_data": {k: scored.get(k) for k in ["temperature_C","vibration_mm_s","rpm","current_A"]},
-        "acknowledged": False,
-        "auto": True,
-    }
-    alerts_store.append(alert)
-    alerts_store.sort(key=lambda a: a["risk_score"], reverse=True)
+    sensor_data = {k: scored.get(k) for k in ["temperature_C", "vibration_mm_s", "rpm", "current_A", "status"]}
+    node_data = await _request_node("POST", "/alert", json_body={
+        "machine_id": machine_id,
+        "reason": scored.get("explanation", "Critical anomaly detected."),
+        "reading": sensor_data,
+    })
+    node_alert = node_data.get("alert", {})
+    _record_local_alert(
+        machine_id,
+        scored.get("explanation", "Critical anomaly detected."),
+        scored.get("risk_score", 1.0),
+        sensor_data,
+        node_alert_id=node_alert.get("id"),
+        timestamp=node_alert.get("triggered_at"),
+        auto=True,
+    )
 
 
 # ── Schedule maintenance endpoint (Bonus) ────────────────────────────────────
@@ -262,19 +265,18 @@ class ScheduleRequest(BaseModel):
 
 @app.post("/schedule-maintenance")
 async def schedule_maintenance(payload: ScheduleRequest):
-    priority_offsets = {"critical": 2, "high": 8, "normal": 24, "low": 72}
-    offset_hours = priority_offsets.get(payload.priority, 24)
-
-    from datetime import timedelta
-    slot_time = datetime.now(timezone.utc) + timedelta(hours=offset_hours)
+    node_data = await _request_node("POST", "/schedule-maintenance", json_body={
+        "machine_id": payload.machine_id,
+    })
+    booking = node_data.get("booking", {})
     slot = {
-        "booking_id":  str(uuid.uuid4())[:8],
-        "machine_id":  payload.machine_id,
-        "priority":    payload.priority,
-        "scheduled_at": slot_time.isoformat(),
-        "alert_id":    payload.alert_id,
+        "booking_id": booking.get("id"),
+        "machine_id": booking.get("machine_id", payload.machine_id),
+        "priority": payload.priority,
+        "scheduled_at": booking.get("slot"),
+        "alert_id": payload.alert_id,
         "requested_by": payload.requested_by,
-        "status":      "confirmed",
+        "status": "confirmed",
     }
     return {"status": "scheduled", "slot": slot}
 
@@ -282,29 +284,30 @@ async def schedule_maintenance(payload: ScheduleRequest):
 # ── Status / dashboard endpoints ──────────────────────────────────────────────
 @app.get("/status")
 async def status():
+    node_alerts = await _request_node("GET", "/alerts")
     return {
         "machines": MACHINES,
         "model_loaded": scorer_registry is not None,
-        "active_alerts": len([a for a in alerts_store if not a["acknowledged"]]),
+        "active_alerts": node_alerts.get("count", 0),
         "machine_states": machine_state,
     }
 
 
 @app.get("/alerts")
 async def get_alerts(limit: int = 50):
-    return {
-        "count": len(alerts_store),
-        "alerts": alerts_store[:limit],
-    }
+    node_alerts = await _request_node("GET", "/alerts")
+    return _enrich_node_alerts(node_alerts.get("alerts", []), limit)
 
 
 @app.get("/dashboard-data")
 async def dashboard_data():
     """Polling endpoint for the frontend dashboard."""
+    node_alerts = await _request_node("GET", "/alerts")
+    enriched_alerts = _enrich_node_alerts(node_alerts.get("alerts", []), 10)
     return {
         "timestamp":    datetime.now(timezone.utc).isoformat(),
         "machine_states": machine_state,
-        "recent_alerts": alerts_store[:10],
+        "recent_alerts": enriched_alerts["alerts"],
         "summary": {
             m: {
                 "risk_level": machine_state.get(m, {}).get("risk_level", "unknown"),

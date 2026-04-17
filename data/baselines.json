@@ -1,0 +1,138 @@
+{
+  "CNC_01": {
+    "temperature_C": {
+      "mean": 72.7956,
+      "std": 2.0248,
+      "min_normal": 66.7213,
+      "max_normal": 78.87,
+      "p5": 70.12,
+      "p95": 77.04
+    },
+    "vibration_mm_s": {
+      "mean": 2.0332,
+      "std": 0.4682,
+      "min_normal": 0.6287,
+      "max_normal": 3.4377,
+      "p5": 1.74,
+      "p95": 3.0
+    },
+    "rpm": {
+      "mean": 1480.1001,
+      "std": 12.8023,
+      "min_normal": 1441.6931,
+      "max_normal": 1518.5071,
+      "p5": 1460.0,
+      "p95": 1500.0
+    },
+    "current_A": {
+      "mean": 12.6675,
+      "std": 0.3972,
+      "min_normal": 11.4758,
+      "max_normal": 13.8591,
+      "p5": 12.17,
+      "p95": 13.53
+    }
+  },
+  "CNC_02": {
+    "temperature_C": {
+      "mean": 69.0965,
+      "std": 4.8803,
+      "min_normal": 54.4556,
+      "max_normal": 83.7375,
+      "p5": 66.16,
+      "p95": 83.02
+    },
+    "vibration_mm_s": {
+      "mean": 1.5003,
+      "std": 0.0349,
+      "min_normal": 1.3955,
+      "max_normal": 1.605,
+      "p5": 1.45,
+      "p95": 1.55
+    },
+    "rpm": {
+      "mean": 1490.1147,
+      "std": 12.8495,
+      "min_normal": 1451.5662,
+      "max_normal": 1528.6632,
+      "p5": 1470.0,
+      "p95": 1510.0
+    },
+    "current_A": {
+      "mean": 11.9849,
+      "std": 0.833,
+      "min_normal": 9.4859,
+      "max_normal": 14.484,
+      "p5": 11.48,
+      "p95": 13.899
+    }
+  },
+  "PUMP_03": {
+    "temperature_C": {
+      "mean": 55.0015,
+      "std": 0.9491,
+      "min_normal": 52.1541,
+      "max_normal": 57.849,
+      "p5": 53.52,
+      "p95": 56.48
+    },
+    "vibration_mm_s": {
+      "mean": 2.3036,
+      "std": 0.5507,
+      "min_normal": 0.6515,
+      "max_normal": 3.9557,
+      "p5": 2.12,
+      "p95": 2.29
+    },
+    "rpm": {
+      "mean": 2881.6997,
+      "std": 37.8595,
+      "min_normal": 2768.1211,
+      "max_normal": 2995.2782,
+      "p5": 2827.0,
+      "p95": 2950.0
+    },
+    "current_A": {
+      "mean": 18.0671,
+      "std": 0.4911,
+      "min_normal": 16.5937,
+      "max_normal": 19.5405,
+      "p5": 17.52,
+      "p95": 18.52
+    }
+  },
+  "CONVEYOR_04": {
+    "temperature_C": {
+      "mean": 45.0088,
+      "std": 0.7871,
+      "min_normal": 42.6476,
+      "max_normal": 47.37,
+      "p5": 43.78,
+      "p95": 46.23
+    },
+    "vibration_mm_s": {
+      "mean": 0.8999,
+      "std": 0.0207,
+      "min_normal": 0.8379,
+      "max_normal": 0.962,
+      "p5": 0.87,
+      "p95": 0.93
+    },
+    "rpm": {
+      "mean": 720.0386,
+      "std": 6.2607,
+      "min_normal": 701.2564,
+      "max_normal": 738.8207,
+      "p5": 710.0,
+      "p95": 730.0
+    },
+    "current_A": {
+      "mean": 8.5002,
+      "std": 0.1483,
+      "min_normal": 8.0552,
+      "max_normal": 8.9452,
+      "p5": 8.27,
+      "p95": 8.73
+    }
+  }
+}

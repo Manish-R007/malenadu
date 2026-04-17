@@ -31,7 +31,7 @@ from typing import Dict
 import aiohttp
 
 BASE_URL  = os.environ.get("AGENT_BASE_URL", "http://localhost:8000")
-MACHINES  = ["CNC_01", "CNC_02", "HVAC_01", "PUMP_01"]
+MACHINES  = ["CNC_01", "CNC_02", "PUMP_03", "CONVEYOR_04"]
 MAX_RECONNECT_DELAY = 30  # seconds
 
 # Priority labels for scheduling
