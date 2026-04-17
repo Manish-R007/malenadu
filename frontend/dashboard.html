@@ -7,41 +7,46 @@
 <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Barlow+Condensed:wght@300;500;700;900&display=swap" rel="stylesheet"/>
 <style>
   :root {
-    --bg:        #090c0f;
-    --panel:     #0d1117;
-    --border:    #1a2433;
-    --accent:    #00d4ff;
-    --green:     #00ff88;
-    --yellow:    #ffcc00;
-    --red:       #ff3355;
-    --muted:     #3a4a5c;
-    --text:      #c8d8e8;
-    --mono:      'Share Tech Mono', monospace;
-    --head:      'Barlow Condensed', sans-serif;
+    --bg: #090c0f;
+    --panel: #0d1117;
+    --panel-soft: #101720;
+    --border: #1a2433;
+    --accent: #00d4ff;
+    --green: #00ff88;
+    --yellow: #ffcc00;
+    --red: #ff3355;
+    --orange: #ff7b2f;
+    --muted: #3a4a5c;
+    --text: #c8d8e8;
+    --mono: 'Share Tech Mono', monospace;
+    --head: 'Barlow Condensed', sans-serif;
   }
 
   * { box-sizing: border-box; margin: 0; padding: 0; }
 
   body {
-    background: var(--bg);
+    background:
+      radial-gradient(circle at top right, rgba(0, 212, 255, 0.10), transparent 28%),
+      radial-gradient(circle at bottom left, rgba(255, 51, 85, 0.08), transparent 25%),
+      var(--bg);
     color: var(--text);
     font-family: var(--mono);
     font-size: 13px;
     min-height: 100vh;
     overflow-x: hidden;
+    padding-bottom: 34px;
   }
 
-  /* Scanline overlay */
   body::after {
-    content: '';
+    content: "";
     position: fixed;
     inset: 0;
     background: repeating-linear-gradient(
       0deg,
       transparent,
       transparent 2px,
-      rgba(0,0,0,0.05) 2px,
-      rgba(0,0,0,0.05) 4px
+      rgba(0, 0, 0, 0.05) 2px,
+      rgba(0, 0, 0, 0.05) 4px
     );
     pointer-events: none;
     z-index: 9999;
@@ -51,9 +56,9 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 12px 24px;
+    padding: 14px 24px;
     border-bottom: 1px solid var(--border);
-    background: rgba(0,212,255,0.03);
+    background: rgba(0, 212, 255, 0.03);
   }
 
   .logo {
@@ -63,22 +68,25 @@
     letter-spacing: 4px;
     text-transform: uppercase;
     color: var(--accent);
-    text-shadow: 0 0 20px rgba(0,212,255,0.5);
+    text-shadow: 0 0 20px rgba(0, 212, 255, 0.5);
   }
 
   .logo span { color: var(--text); }
 
   .header-meta {
     display: flex;
-    gap: 24px;
+    gap: 18px;
     align-items: center;
     font-size: 11px;
     color: var(--muted);
     letter-spacing: 1px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
   }
 
   .live-dot {
-    width: 8px; height: 8px;
+    width: 8px;
+    height: 8px;
     border-radius: 50%;
     background: var(--green);
     box-shadow: 0 0 8px var(--green);
@@ -92,83 +100,236 @@
 
   main {
     display: grid;
-    grid-template-columns: 1fr 1fr;
-    grid-template-rows: auto auto;
+    grid-template-columns: 1.2fr 0.8fr;
     gap: 1px;
     background: var(--border);
-    min-height: calc(100vh - 50px);
-  }
-
-  @media (max-width: 900px) {
-    main { grid-template-columns: 1fr; }
-  }
-
-  /* ── Machine cards ──────────────────────────────── */
-  .machines-panel {
-    grid-column: 1 / 3;
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 1px;
-    background: var(--border);
+    min-height: calc(100vh - 58px);
   }
 
   @media (max-width: 1100px) {
-    .machines-panel { grid-template-columns: repeat(2, 1fr); }
+    main { grid-template-columns: 1fr; }
+  }
+
+  .left-column,
+  .right-column {
+    display: grid;
+    gap: 1px;
+    background: var(--border);
+  }
+
+  .hero-panel,
+  .machines-panel,
+  .panel {
+    background: var(--panel);
+    padding: 20px;
+  }
+
+  .hero-panel {
+    background:
+      linear-gradient(135deg, rgba(0, 212, 255, 0.06), transparent 50%),
+      linear-gradient(180deg, rgba(255, 51, 85, 0.05), transparent 100%),
+      var(--panel);
+  }
+
+  .section-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--accent);
+    font-family: var(--head);
+    font-size: 12px;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+
+  .hero-title {
+    font-family: var(--head);
+    font-size: 38px;
+    line-height: 0.95;
+    letter-spacing: 2px;
+    margin-bottom: 10px;
+  }
+
+  .hero-copy {
+    color: var(--muted);
+    line-height: 1.6;
+    max-width: 760px;
+    margin-bottom: 18px;
+  }
+
+  .summary-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  @media (max-width: 800px) {
+    .summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  }
+
+  .summary-card {
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid var(--border);
+    padding: 12px;
+    min-height: 84px;
+  }
+
+  .summary-kicker {
+    color: var(--muted);
+    font-size: 10px;
+    letter-spacing: 1px;
+    margin-bottom: 8px;
+    text-transform: uppercase;
+  }
+
+  .summary-value {
+    font-family: var(--head);
+    font-size: 28px;
+    line-height: 1;
+    color: var(--text);
+  }
+
+  .summary-note {
+    color: var(--muted);
+    font-size: 10px;
+    margin-top: 8px;
+    line-height: 1.4;
+  }
+
+  .machines-head {
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    align-items: end;
+    margin-bottom: 16px;
+  }
+
+  .panel-title {
+    font-family: var(--head);
+    font-weight: 700;
+    font-size: 18px;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+
+  .panel-subtitle {
+    color: var(--muted);
+    font-size: 11px;
+    letter-spacing: 1px;
+  }
+
+  .machines-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+  }
+
+  @media (max-width: 800px) {
+    .machines-grid { grid-template-columns: 1fr; }
   }
 
   .machine-card {
-    background: var(--panel);
-    padding: 18px;
+    background: linear-gradient(180deg, rgba(255,255,255,0.02), transparent 70%), var(--panel-soft);
+    padding: 16px;
     position: relative;
     overflow: hidden;
-    transition: background 0.3s;
+    border: 1px solid var(--border);
+    min-height: 264px;
+    transition: transform 0.2s ease, border-color 0.2s ease, background 0.2s ease;
   }
 
   .machine-card::before {
-    content: '';
+    content: "";
     position: absolute;
-    top: 0; left: 0; right: 0;
-    height: 2px;
+    inset: 0 auto auto 0;
+    width: 100%;
+    height: 3px;
     background: var(--accent);
-    transition: background 0.3s, box-shadow 0.3s;
   }
 
-  .machine-card.warning::before { background: var(--yellow); box-shadow: 0 0 12px var(--yellow); }
+  .machine-card.normal::before { background: var(--green); box-shadow: 0 0 10px var(--green); }
+  .machine-card.warning::before { background: var(--yellow); box-shadow: 0 0 10px var(--yellow); }
   .machine-card.critical::before { background: var(--red); box-shadow: 0 0 12px var(--red); }
-  .machine-card.normal::before  { background: var(--green); box-shadow: 0 0 8px var(--green); }
+  .machine-card.absent::before { background: var(--orange); box-shadow: 0 0 12px var(--orange); }
 
-  .machine-card.critical { background: rgba(255,51,85,0.04); }
-  .machine-card.warning  { background: rgba(255,204,0,0.03); }
+  .machine-card.top-priority {
+    border-color: rgba(255, 51, 85, 0.55);
+    box-shadow: inset 0 0 0 1px rgba(255, 51, 85, 0.22);
+  }
+
+  .machine-card.warning { background: rgba(255, 204, 0, 0.04); }
+  .machine-card.critical { background: rgba(255, 51, 85, 0.06); }
+  .machine-card.absent { background: rgba(255, 123, 47, 0.06); }
+
+  .priority-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 8px;
+    border: 1px solid var(--border);
+    color: var(--muted);
+    font-size: 10px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    margin-bottom: 12px;
+  }
+
+  .priority-pill.hot {
+    color: var(--red);
+    border-color: rgba(255, 51, 85, 0.4);
+    background: rgba(255, 51, 85, 0.08);
+  }
 
   .card-header {
     display: flex;
     justify-content: space-between;
+    gap: 10px;
     align-items: flex-start;
-    margin-bottom: 14px;
+    margin-bottom: 12px;
   }
 
   .machine-name {
     font-family: var(--head);
-    font-weight: 700;
-    font-size: 20px;
+    font-size: 24px;
     letter-spacing: 2px;
     color: var(--accent);
   }
 
-  .risk-badge {
+  .risk-badge,
+  .signal-chip {
     font-family: var(--head);
-    font-weight: 700;
     font-size: 11px;
     letter-spacing: 2px;
-    padding: 3px 8px;
+    padding: 4px 8px;
     border-radius: 2px;
     text-transform: uppercase;
   }
 
-  .risk-badge.normal   { background: rgba(0,255,136,0.15); color: var(--green); }
-  .risk-badge.warning  { background: rgba(255,204,0,0.15);  color: var(--yellow); }
-  .risk-badge.critical { background: rgba(255,51,85,0.2);   color: var(--red); }
-  .risk-badge.unknown  { background: rgba(58,74,92,0.3);    color: var(--muted); }
+  .risk-badge.normal { background: rgba(0, 255, 136, 0.15); color: var(--green); }
+  .risk-badge.warning { background: rgba(255, 204, 0, 0.15); color: var(--yellow); }
+  .risk-badge.critical { background: rgba(255, 51, 85, 0.18); color: var(--red); }
+  .risk-badge.unknown { background: rgba(58, 74, 92, 0.35); color: var(--muted); }
+  .risk-badge.absent { background: rgba(255, 123, 47, 0.18); color: var(--orange); }
+
+  .signal-row {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+  }
+
+  .signal-chip {
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--muted);
+    border: 1px solid var(--border);
+  }
+
+  .signal-chip.ok { color: var(--green); }
+  .signal-chip.connecting { color: var(--yellow); }
+  .signal-chip.err { color: var(--red); }
+  .signal-chip.absent { color: var(--orange); }
 
   .sensors {
     display: grid;
@@ -178,10 +339,9 @@
   }
 
   .sensor-item {
-    background: rgba(255,255,255,0.02);
+    background: rgba(255, 255, 255, 0.02);
     border: 1px solid var(--border);
     padding: 8px 10px;
-    border-radius: 2px;
   }
 
   .sensor-label {
@@ -197,154 +357,161 @@
     font-family: var(--head);
     font-weight: 700;
     color: var(--text);
-    transition: color 0.3s;
   }
 
-  .sensor-value.alert-high { color: var(--red) !important; }
-  .sensor-value.alert-mid  { color: var(--yellow) !important; }
+  .sensor-value.alert-high { color: var(--red); }
+  .sensor-value.alert-mid { color: var(--yellow); }
+  .sensor-unit { font-size: 10px; color: var(--muted); margin-left: 2px; }
 
-  .sensor-unit {
-    font-size: 10px;
-    color: var(--muted);
-    margin-left: 2px;
-  }
-
-  /* Risk score bar */
-  .risk-bar-wrap {
-    margin-bottom: 10px;
-  }
+  .risk-bar-wrap { margin-bottom: 12px; }
 
   .risk-bar-label {
     display: flex;
     justify-content: space-between;
-    font-size: 10px;
+    margin-bottom: 5px;
     color: var(--muted);
-    margin-bottom: 4px;
+    font-size: 10px;
     letter-spacing: 1px;
   }
 
   .risk-bar-track {
-    height: 4px;
-    background: rgba(255,255,255,0.05);
-    border-radius: 2px;
+    height: 5px;
+    background: rgba(255, 255, 255, 0.05);
     overflow: hidden;
   }
 
   .risk-bar-fill {
     height: 100%;
-    border-radius: 2px;
-    transition: width 0.8s ease, background 0.3s;
+    transition: width 0.8s ease, background 0.25s ease;
   }
 
-  /* Explanation text */
   .explanation {
-    font-size: 11px;
-    color: var(--muted);
-    line-height: 1.5;
-    border-left: 2px solid var(--border);
+    min-height: 54px;
     padding-left: 8px;
-    min-height: 32px;
-    transition: color 0.3s;
-  }
-
-  .explanation.has-alert { color: var(--text); border-left-color: var(--yellow); }
-  .explanation.is-critical { color: #ff8fa0; border-left-color: var(--red); }
-
-  /* Timestamp */
-  .card-ts { font-size: 10px; color: var(--muted); margin-top: 8px; letter-spacing: 1px; }
-
-  /* ── Bottom panels ────────────────────────────── */
-  .alerts-panel, .chart-panel {
-    background: var(--panel);
-    padding: 20px;
-  }
-
-  .panel-title {
-    font-family: var(--head);
-    font-weight: 700;
-    font-size: 16px;
-    letter-spacing: 3px;
-    text-transform: uppercase;
-    color: var(--accent);
-    margin-bottom: 16px;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-
-  .alert-count {
-    background: var(--red);
-    color: white;
+    border-left: 2px solid var(--border);
     font-size: 11px;
-    padding: 1px 6px;
-    border-radius: 10px;
-    font-family: var(--mono);
+    line-height: 1.55;
+    color: var(--muted);
   }
 
-  /* Alert list */
-  .alert-list {
+  .explanation.warning { color: var(--text); border-left-color: var(--yellow); }
+  .explanation.critical,
+  .explanation.absent { color: #ff9fb0; border-left-color: var(--red); }
+
+  .card-footer {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 12px;
+    color: var(--muted);
+    font-size: 10px;
+    letter-spacing: 1px;
+    gap: 12px;
+  }
+
+  .stack {
+    display: grid;
+    gap: 1px;
+    background: var(--border);
+  }
+
+  .panel-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 14px;
+  }
+
+  .tiny-count {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 3px 8px;
+    font-size: 11px;
+  }
+
+  .alert-list,
+  .maintenance-list,
+  .ops-list {
     display: flex;
     flex-direction: column;
-    gap: 6px;
-    max-height: 340px;
+    gap: 8px;
+    max-height: 280px;
     overflow-y: auto;
   }
 
-  .alert-list::-webkit-scrollbar { width: 4px; }
-  .alert-list::-webkit-scrollbar-track { background: transparent; }
-  .alert-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
-
-  .alert-item {
-    background: rgba(255,255,255,0.02);
-    border: 1px solid var(--border);
-    border-left: 3px solid var(--red);
-    padding: 8px 12px;
-    display: grid;
-    grid-template-columns: 90px 80px 1fr;
-    gap: 8px;
-    align-items: start;
+  .list-empty {
+    text-align: center;
+    padding: 28px 0;
+    color: var(--muted);
+    letter-spacing: 1px;
     font-size: 11px;
-    animation: slideIn 0.3s ease;
   }
 
+  .alert-item,
+  .maintenance-item,
+  .ops-item {
+    border: 1px solid var(--border);
+    background: rgba(255, 255, 255, 0.02);
+    padding: 10px 12px;
+  }
+
+  .alert-item { border-left: 3px solid var(--red); }
   .alert-item.warning { border-left-color: var(--yellow); }
+  .maintenance-item { border-left: 3px solid var(--accent); }
+  .ops-item.ok { border-left: 3px solid var(--green); }
+  .ops-item.warn { border-left: 3px solid var(--yellow); }
+  .ops-item.err { border-left: 3px solid var(--red); }
+  .ops-item.absent { border-left: 3px solid var(--orange); }
 
-  @keyframes slideIn {
-    from { opacity: 0; transform: translateY(-6px); }
-    to   { opacity: 1; transform: translateY(0); }
+  .list-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    align-items: start;
   }
 
-  .alert-machine {
+  .list-label {
     font-family: var(--head);
-    font-weight: 700;
-    font-size: 13px;
+    font-size: 14px;
+    letter-spacing: 1px;
     color: var(--accent);
   }
 
-  .alert-score { color: var(--red); font-weight: bold; }
-  .alert-score.warning { color: var(--yellow); }
-  .alert-reason { color: var(--text); line-height: 1.4; }
-  .alert-ts { color: var(--muted); font-size: 10px; grid-column: 1 / 4; }
+  .list-score {
+    font-weight: bold;
+    color: var(--red);
+  }
 
-  .no-alerts {
-    text-align: center;
-    padding: 40px 0;
+  .list-score.warning { color: var(--yellow); }
+  .list-copy {
+    line-height: 1.5;
+    color: var(--text);
+    margin-top: 4px;
+  }
+
+  .list-meta {
+    margin-top: 6px;
     color: var(--muted);
-    font-size: 12px;
+    font-size: 10px;
     letter-spacing: 1px;
   }
 
-  /* Sparkline chart area */
+  .ops-copy {
+    color: var(--text);
+    line-height: 1.45;
+  }
+
   .chart-panel canvas {
     width: 100%;
-    max-height: 200px;
+    max-height: 220px;
   }
 
   .chart-selector {
     display: flex;
     gap: 8px;
-    margin-bottom: 12px;
     flex-wrap: wrap;
+    margin-bottom: 14px;
   }
 
   .chart-btn {
@@ -356,19 +523,20 @@
     padding: 4px 10px;
     cursor: pointer;
     letter-spacing: 1px;
-    transition: all 0.2s;
   }
 
-  .chart-btn.active, .chart-btn:hover {
-    background: rgba(0,212,255,0.1);
+  .chart-btn.active,
+  .chart-btn:hover {
+    background: rgba(0, 212, 255, 0.08);
     border-color: var(--accent);
     color: var(--accent);
   }
 
-  /* Connection status bar */
   .conn-bar {
     position: fixed;
-    bottom: 0; left: 0; right: 0;
+    bottom: 0;
+    left: 0;
+    right: 0;
     background: var(--panel);
     border-top: 1px solid var(--border);
     padding: 6px 24px;
@@ -382,11 +550,10 @@
 
   .conn-item { display: flex; align-items: center; gap: 6px; }
   .conn-dot { width: 6px; height: 6px; border-radius: 50%; }
-  .conn-dot.ok  { background: var(--green); box-shadow: 0 0 6px var(--green); }
+  .conn-dot.ok { background: var(--green); box-shadow: 0 0 6px var(--green); }
   .conn-dot.err { background: var(--red); }
   .conn-dot.connecting { background: var(--yellow); animation: pulse 1s infinite; }
-
-  body { padding-bottom: 34px; }
+  .conn-dot.absent { background: var(--orange); box-shadow: 0 0 6px var(--orange); }
 </style>
 </head>
 <body>
@@ -395,254 +562,467 @@
   <div class="logo">Predicta<span>Maint</span></div>
   <div class="header-meta">
     <div class="live-dot"></div>
-    <span>LIVE MONITORING</span>
+    <span>4 STREAMS LIVE</span>
     <span id="global-ts">--:--:--</span>
+    <span id="header-priority">TOP PRIORITY: --</span>
     <span id="active-alerts-header">0 ALERTS</span>
   </div>
 </header>
 
 <main>
-  <div class="machines-panel" id="machines-panel">
-    <!-- Cards injected by JS -->
+  <div class="left-column">
+    <section class="hero-panel">
+      <div class="section-label">Agent Overview</div>
+      <div class="hero-title">AUTONOMOUS RISK<br/>PRIORITY BOARD</div>
+      <p class="hero-copy">
+        The dashboard shows all four machine streams at once, scores every reading, ranks assets by live risk,
+        exposes the critical alert queue, tracks reconnect and data-absence signals, and surfaces auto-booked maintenance slots.
+      </p>
+      <div class="summary-grid">
+        <div class="summary-card">
+          <div class="summary-kicker">Monitored Streams</div>
+          <div class="summary-value" id="summary-streams">4</div>
+          <div class="summary-note">Parallel SSE connections to all machine feeds.</div>
+        </div>
+        <div class="summary-card">
+          <div class="summary-kicker">Highest Risk</div>
+          <div class="summary-value" id="summary-highest-risk">0.000</div>
+          <div class="summary-note" id="summary-highest-machine">Awaiting data</div>
+        </div>
+        <div class="summary-card">
+          <div class="summary-kicker">Critical Queue</div>
+          <div class="summary-value" id="summary-alerts">0</div>
+          <div class="summary-note">POST /alert calls sorted by risk score.</div>
+        </div>
+        <div class="summary-card">
+          <div class="summary-kicker">Maintenance Bookings</div>
+          <div class="summary-value" id="summary-maintenance">0</div>
+          <div class="summary-note">Auto-scheduled after critical escalation.</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="machines-panel">
+      <div class="machines-head">
+        <div>
+          <div class="panel-title">Machine Priority</div>
+          <div class="panel-subtitle">Cards reorder live by risk factor, highest first.</div>
+        </div>
+        <div class="panel-subtitle" id="ranked-at">RANKED: --</div>
+      </div>
+      <div class="machines-grid" id="machines-panel"></div>
+    </section>
+
+    <section class="panel chart-panel">
+      <div class="panel-head">
+        <div>
+          <div class="panel-title">Sensor History</div>
+          <div class="panel-subtitle">Sparkline for the currently selected machine and sensor.</div>
+        </div>
+      </div>
+      <div class="chart-selector" id="chart-selector"></div>
+      <canvas id="sparkline" height="220"></canvas>
+    </section>
   </div>
 
-  <div class="alerts-panel">
-    <div class="panel-title">
-      🚨 Alert Queue
-      <span class="alert-count" id="alert-count">0</span>
-    </div>
-    <div class="alert-list" id="alert-list">
-      <div class="no-alerts">NO ACTIVE ALERTS</div>
-    </div>
-  </div>
+  <div class="right-column">
+    <div class="stack">
+      <section class="panel">
+        <div class="panel-head">
+          <div>
+            <div class="panel-title">Alert Queue</div>
+            <div class="panel-subtitle">Critical situations raised through POST /alert.</div>
+          </div>
+          <div class="tiny-count" id="alert-count">0</div>
+        </div>
+        <div class="alert-list" id="alert-list">
+          <div class="list-empty">NO ACTIVE ALERTS</div>
+        </div>
+      </section>
 
-  <div class="chart-panel">
-    <div class="panel-title">📈 Sensor History</div>
-    <div class="chart-selector" id="chart-selector"></div>
-    <canvas id="sparkline" height="200"></canvas>
+      <section class="panel">
+        <div class="panel-head">
+          <div>
+            <div class="panel-title">Maintenance</div>
+            <div class="panel-subtitle">Recent auto-booked slots from POST /schedule-maintenance.</div>
+          </div>
+          <div class="tiny-count" id="maintenance-count">0</div>
+        </div>
+        <div class="maintenance-list" id="maintenance-list">
+          <div class="list-empty">NO BOOKINGS YET</div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <div>
+            <div class="panel-title">Operations Feed</div>
+            <div class="panel-subtitle">Stream state, scoring signals, reconnects, and data absence.</div>
+          </div>
+          <div class="tiny-count" id="ops-count">0</div>
+        </div>
+        <div class="ops-list" id="ops-list">
+          <div class="list-empty">AWAITING EVENTS</div>
+        </div>
+      </section>
+    </div>
   </div>
 </main>
 
-<div class="conn-bar" id="conn-bar">
-  <!-- Connection status dots injected by JS -->
-</div>
+<div class="conn-bar" id="conn-bar"></div>
 
 <script>
-const BASE     = "http://localhost:8000";
+const BASE = "http://localhost:8000";
 const MACHINES = ["CNC_01", "CNC_02", "PUMP_03", "CONVEYOR_04"];
-const MAX_HIST = 60;  // points to keep per sensor per machine
+const MAX_HIST = 60;
+const MAX_EVENTS = 28;
 
-// ── State ────────────────────────────────────────────────────────────────────
+const SENSOR_LABELS = {
+  temperature_C: { label: "Temp", unit: "°C", color: "#ff6b6b" },
+  vibration_mm_s: { label: "Vibr", unit: "mm/s", color: "#ffd93d" },
+  rpm: { label: "RPM", unit: "rpm", color: "#6bffb8" },
+  current_A: { label: "Curr", unit: "A", color: "#74b9ff" },
+};
+
 const state = {};
-MACHINES.forEach(m => {
-  state[m] = {
+MACHINES.forEach(machineId => {
+  state[machineId] = {
     reading: null,
     history: { temperature_C: [], vibration_mm_s: [], rpm: [], current_A: [] },
     connStatus: "connecting",
     evtSource: null,
+    reconnects: 0,
+    absenceCount: 0,
+    lastEventAt: null,
   };
 });
 
-let alerts    = [];
+let alerts = [];
+let maintenance = [];
+let rankedMachines = [...MACHINES];
 let chartMachine = MACHINES[0];
-let chartSensor  = "temperature_C";
-const SENSOR_LABELS = {
-  temperature_C:  { label: "Temp",  unit: "°C",   color: "#ff6b6b" },
-  vibration_mm_s: { label: "Vibr",  unit: "mm/s", color: "#ffd93d" },
-  rpm:            { label: "RPM",   unit: "rpm",  color: "#6bffb8" },
-  current_A:      { label: "Curr",  unit: "A",    color: "#74b9ff" },
-};
+let chartSensor = "temperature_C";
+let opsFeed = [];
 
-// ── Build initial UI ─────────────────────────────────────────────────────────
+function levelClass(level, reading) {
+  if (reading?.status === "data_absent") return "absent";
+  return level || "unknown";
+}
+
+function signalLabel(machineId) {
+  const s = state[machineId];
+  if (s.absenceCount > 0) return `DATA ABSENT x${s.absenceCount}`;
+  if (s.connStatus === "err") return "RECONNECTING";
+  if (s.connStatus === "connecting") return "CONNECTING";
+  return "STREAM OK";
+}
+
+function pushEvent(machineId, kind, message, tone = "ok") {
+  const id = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  opsFeed.unshift({
+    id,
+    machineId,
+    kind,
+    message,
+    tone,
+    ts: new Date().toISOString(),
+  });
+  opsFeed = opsFeed.slice(0, MAX_EVENTS);
+  renderOpsFeed();
+}
+
 function buildCards() {
   const panel = document.getElementById("machines-panel");
-  panel.innerHTML = MACHINES.map(m => `
-    <div class="machine-card" id="card-${m}">
-      <div class="card-header">
-        <div class="machine-name">${m}</div>
-        <div class="risk-badge unknown" id="badge-${m}">CONNECTING</div>
-      </div>
-      <div class="sensors" id="sensors-${m}">
-        ${Object.entries(SENSOR_LABELS).map(([k,v]) => `
-          <div class="sensor-item">
-            <div class="sensor-label">${v.label}</div>
-            <div class="sensor-value" id="sv-${m}-${k}">--<span class="sensor-unit">${v.unit}</span></div>
+  const machines = [...MACHINES].sort((a, b) => {
+    const aScore = state[a].reading?.risk_score || 0;
+    const bScore = state[b].reading?.risk_score || 0;
+    return bScore - aScore;
+  });
+  rankedMachines = machines;
+
+  if (!machines.includes(chartMachine)) chartMachine = machines[0] || MACHINES[0];
+
+  panel.innerHTML = machines.map((machineId, index) => {
+    const reading = state[machineId].reading || {};
+    const level = levelClass(reading.risk_level, reading);
+    const score = reading.risk_score || 0;
+    const topPriority = index === 0 && score > 0;
+    const cardClass = `machine-card ${level} ${topPriority ? "top-priority" : ""}`;
+    const badgeLabel = level === "absent" ? "ABSENT" : (reading.risk_level || "unknown").toUpperCase();
+    const badgeClass = `risk-badge ${level === "absent" ? "absent" : (reading.risk_level || "unknown")}`;
+    const pillClass = `priority-pill ${topPriority ? "hot" : ""}`;
+    const explanationClass = `explanation ${level}`;
+    const signalTone = state[machineId].connStatus === "ok"
+      ? "ok"
+      : (state[machineId].absenceCount > 0 ? "absent" : state[machineId].connStatus);
+
+    return `
+      <div class="${cardClass}" id="card-${machineId}">
+        <div class="${pillClass}">Priority #${index + 1}${topPriority ? " • active focus" : ""}</div>
+        <div class="card-header">
+          <div class="machine-name">${machineId}</div>
+          <div class="${badgeClass}" id="badge-${machineId}">${badgeLabel}</div>
+        </div>
+        <div class="signal-row">
+          <div class="signal-chip ${signalTone}">${signalLabel(machineId)}</div>
+          <div class="signal-chip">RECONNECTS ${state[machineId].reconnects}</div>
+          <div class="signal-chip">ALERT MODE ${score > 0.65 ? "ON" : "STANDBY"}</div>
+        </div>
+        <div class="sensors">
+          ${Object.entries(SENSOR_LABELS).map(([key, meta]) => {
+            const value = reading[key];
+            const zScore = (reading.z_scores || {})[key] || 0;
+            const sensorClass = "sensor-value" + (zScore > 4 ? " alert-high" : zScore > 2.5 ? " alert-mid" : "");
+            return `
+              <div class="sensor-item">
+                <div class="sensor-label">${meta.label}</div>
+                <div class="${sensorClass}">${value ?? "--"}<span class="sensor-unit">${meta.unit}</span></div>
+              </div>
+            `;
+          }).join("")}
+        </div>
+        <div class="risk-bar-wrap">
+          <div class="risk-bar-label">
+            <span>RISK SCORE</span>
+            <span>${score.toFixed(3)}</span>
           </div>
-        `).join("")}
-      </div>
-      <div class="risk-bar-wrap">
-        <div class="risk-bar-label">
-          <span>RISK SCORE</span>
-          <span id="rs-${m}">0.000</span>
+          <div class="risk-bar-track">
+            <div class="risk-bar-fill" style="width:${Math.min(score * 100, 100)}%;background:${score > 0.65 ? "var(--red)" : score > 0.35 ? "var(--yellow)" : "var(--green)"}"></div>
+          </div>
         </div>
-        <div class="risk-bar-track">
-          <div class="risk-bar-fill" id="rb-${m}" style="width:0%;background:var(--green)"></div>
+        <div class="${explanationClass}">${reading.explanation || "Awaiting data..."}</div>
+        <div class="card-footer">
+          <span>${state[machineId].lastEventAt ? `UPDATED ${new Date(state[machineId].lastEventAt).toLocaleTimeString()}` : "UPDATED --"}</span>
+          <span>${reading.suppressed ? "TRANSIENT SPIKE SUPPRESSED" : (score > 0.65 ? "CRITICAL PATH" : "MONITORING")}</span>
         </div>
       </div>
-      <div class="explanation" id="exp-${m}">Awaiting data…</div>
-      <div class="card-ts" id="ts-${m}"></div>
-    </div>
-  `).join("");
+    `;
+  }).join("");
+
+  buildChartSelector();
+  updateHeaderSummary();
 }
 
 function buildConnBar() {
   const bar = document.getElementById("conn-bar");
-  bar.innerHTML = MACHINES.map(m => `
+  bar.innerHTML = MACHINES.map(machineId => `
     <div class="conn-item">
-      <div class="conn-dot connecting" id="dot-${m}"></div>
-      <span>${m}</span>
+      <div class="conn-dot connecting" id="dot-${machineId}"></div>
+      <span>${machineId}</span>
     </div>
-  `).join("") + '<span style="margin-left:auto">API: ' + BASE + '</span>';
+  `).join("") + `<span style="margin-left:auto">API: ${BASE}</span>`;
 }
 
 function buildChartSelector() {
   const wrap = document.getElementById("chart-selector");
-  wrap.innerHTML = MACHINES.map(m =>
-    `<button class="chart-btn${m===chartMachine?' active':''}" onclick="selectChartMachine('${m}')">${m}</button>`
-  ).join("") + "<span style='margin-left:8px;color:var(--muted)'>|</span>" +
-  Object.entries(SENSOR_LABELS).map(([k,v]) =>
-    `<button class="chart-btn${k===chartSensor?' active':''}" onclick="selectChartSensor('${k}')">${v.label}</button>`
-  ).join("");
+  wrap.innerHTML =
+    rankedMachines.map(machineId =>
+      `<button class="chart-btn${machineId === chartMachine ? " active" : ""}" onclick="selectChartMachine('${machineId}')">${machineId}</button>`
+    ).join("") +
+    "<span style='margin-left:8px;color:var(--muted)'>|</span>" +
+    Object.entries(SENSOR_LABELS).map(([key, meta]) =>
+      `<button class="chart-btn${key === chartSensor ? " active" : ""}" onclick="selectChartSensor('${key}')">${meta.label}</button>`
+    ).join("");
 }
 
-// ── SSE Connection ────────────────────────────────────────────────────────────
-function connectMachine(machine_id) {
-  const s = state[machine_id];
+function updateHeaderSummary() {
+  const topMachine = rankedMachines[0];
+  const topReading = topMachine ? state[topMachine].reading : null;
+  const topScore = topReading?.risk_score || 0;
+  document.getElementById("summary-highest-risk").textContent = topScore.toFixed(3);
+  document.getElementById("summary-highest-machine").textContent = topMachine
+    ? `${topMachine} • ${(topReading?.risk_level || "unknown").toUpperCase()}`
+    : "Awaiting data";
+  document.getElementById("summary-alerts").textContent = String(alerts.length);
+  document.getElementById("summary-maintenance").textContent = String(maintenance.length);
+  document.getElementById("active-alerts-header").textContent = `${alerts.length} ALERTS`;
+  document.getElementById("header-priority").textContent = topMachine
+    ? `TOP PRIORITY: ${topMachine} ${topScore.toFixed(3)}`
+    : "TOP PRIORITY: --";
+  document.getElementById("ranked-at").textContent = `RANKED: ${new Date().toLocaleTimeString()}`;
+}
+
+function setDot(machineId, status) {
+  const dot = document.getElementById(`dot-${machineId}`);
+  if (dot) dot.className = `conn-dot ${status}`;
+}
+
+function connectMachine(machineId) {
+  const s = state[machineId];
   if (s.evtSource) s.evtSource.close();
 
-  const es = new EventSource(`${BASE}/stream/${machine_id}`);
+  const es = new EventSource(`${BASE}/stream/${machineId}`);
   s.evtSource = es;
   s.connStatus = "connecting";
-  setDot(machine_id, "connecting");
+  setDot(machineId, "connecting");
+  buildCards();
+  pushEvent(machineId, "stream", "Connecting to scored SSE stream.", "warn");
 
-  es.onmessage = (e) => {
-    const data = JSON.parse(e.data);
+  es.onmessage = event => {
+    const data = JSON.parse(event.data);
+    s.connStatus = "ok";
+    s.lastEventAt = data.timestamp || new Date().toISOString();
+
     if (data.signal === "data_absent") {
-      setDot(machine_id, "err");
+      s.absenceCount = data.consecutive_gaps || (s.absenceCount + 1);
+      s.reading = {
+        ...s.reading,
+        status: "data_absent",
+        risk_level: "critical",
+        risk_score: Math.max(s.reading?.risk_score || 0, 0.8),
+        explanation: `No data received from the machine feed. Gap count: ${s.absenceCount}.`,
+        timestamp: data.timestamp,
+      };
+      setDot(machineId, "absent");
+      pushEvent(machineId, "absence", `Data absence signal detected. Gap #${s.absenceCount}.`, "absent");
+      buildCards();
+      drawChart();
       return;
     }
-    s.connStatus = "ok";
-    s.reading    = data;
-    setDot(machine_id, "ok");
 
-    // Append to history
+    const wasAbsent = s.absenceCount > 0;
+    s.absenceCount = 0;
+    s.reading = data;
+    setDot(machineId, "ok");
+
     for (const key of Object.keys(s.history)) {
       s.history[key].push(data[key] ?? 0);
       if (s.history[key].length > MAX_HIST) s.history[key].shift();
     }
 
-    updateCard(machine_id, data);
+    if (wasAbsent) {
+      pushEvent(machineId, "recovered", "Stream recovered after data absence.", "ok");
+    }
+    if ((data.risk_score || 0) > 0.65 && !data.suppressed) {
+      pushEvent(machineId, "critical", `Critical scoring event ${data.risk_score.toFixed(3)} queued for alerting.`, "err");
+    } else if (data.suppressed) {
+      pushEvent(machineId, "suppressed", "Transient spike detected and suppressed by the scorer.", "warn");
+    }
+
+    buildCards();
     drawChart();
   };
 
   es.onerror = () => {
     s.connStatus = "err";
-    setDot(machine_id, "err");
+    s.reconnects += 1;
+    setDot(machineId, "err");
+    pushEvent(machineId, "reconnect", `Stream interrupted. Retrying connection attempt ${s.reconnects}.`, "err");
+    buildCards();
     es.close();
-    setTimeout(() => connectMachine(machine_id), 3000);
+    setTimeout(() => connectMachine(machineId), 3000);
   };
 }
 
-// ── Update card ───────────────────────────────────────────────────────────────
-function updateCard(m, d) {
-  const card  = document.getElementById(`card-${m}`);
-  const badge = document.getElementById(`badge-${m}`);
-  const level = d.risk_level || "normal";
-  const score = d.risk_score || 0;
-
-  card.className  = `machine-card ${level}`;
-  badge.className = `risk-badge ${level}`;
-  badge.textContent = level.toUpperCase();
-
-  // Sensors
-  for (const [key, meta] of Object.entries(SENSOR_LABELS)) {
-    const el  = document.getElementById(`sv-${m}-${key}`);
-    const val = d[key];
-    if (val == null) continue;
-    el.innerHTML = `${val}<span class="sensor-unit">${meta.unit}</span>`;
-    const z = (d.z_scores || {})[key] || 0;
-    el.className = "sensor-value" + (z > 4 ? " alert-high" : z > 2.5 ? " alert-mid" : "");
-  }
-
-  // Risk bar
-  document.getElementById(`rs-${m}`).textContent = score.toFixed(3);
-  const bar   = document.getElementById(`rb-${m}`);
-  bar.style.width      = `${Math.min(score * 100, 100)}%`;
-  bar.style.background = score > 0.65 ? "var(--red)" : score > 0.35 ? "var(--yellow)" : "var(--green)";
-
-  // Explanation
-  const expEl = document.getElementById(`exp-${m}`);
-  expEl.textContent = d.explanation || "";
-  expEl.className   = "explanation" + (level === "critical" ? " is-critical" : level === "warning" ? " has-alert" : "");
-
-  // Timestamp
-  const ts = new Date(d.timestamp);
-  document.getElementById(`ts-${m}`).textContent = ts.toLocaleTimeString();
-}
-
-// ── Alerts polling ─────────────────────────────────────────────────────────
-async function pollAlerts() {
+async function pollDashboardData() {
   try {
-    const res  = await fetch(`${BASE}/alerts?limit=20`);
+    const res = await fetch(`${BASE}/dashboard-data`);
     const data = await res.json();
-    alerts = data.alerts || [];
+    alerts = data.recent_alerts || [];
+    maintenance = data.recent_maintenance || [];
     renderAlerts();
-  } catch {}
+    renderMaintenance();
+    updateHeaderSummary();
+  } catch (err) {
+    pushEvent("SYSTEM", "poll", "Failed to refresh dashboard aggregates from backend.", "err");
+  }
 }
 
 function renderAlerts() {
-  const list  = document.getElementById("alert-list");
-  const count = document.getElementById("alert-count");
-  count.textContent = alerts.length;
-  document.getElementById("active-alerts-header").textContent = `${alerts.length} ALERTS`;
+  const list = document.getElementById("alert-list");
+  document.getElementById("alert-count").textContent = String(alerts.length);
 
   if (!alerts.length) {
-    list.innerHTML = '<div class="no-alerts">NO ACTIVE ALERTS</div>';
+    list.innerHTML = '<div class="list-empty">NO ACTIVE ALERTS</div>';
     return;
   }
-  list.innerHTML = alerts.slice(0, 15).map(a => {
-    const isWarn = a.risk_score < 0.65;
-    const ts = new Date(a.timestamp).toLocaleTimeString();
+
+  list.innerHTML = alerts.slice(0, 12).map(alert => {
+    const warning = alert.risk_score < 0.65;
     return `
-      <div class="alert-item ${isWarn ? 'warning' : ''}">
-        <div class="alert-machine">${a.machine_id}</div>
-        <div class="alert-score ${isWarn?'warning':''}">⚡ ${a.risk_score.toFixed(3)}</div>
-        <div class="alert-reason">${a.reason}</div>
-        <div class="alert-ts">${ts}</div>
-      </div>`;
+      <div class="alert-item ${warning ? "warning" : ""}">
+        <div class="list-row">
+          <div class="list-label">${alert.machine_id}</div>
+          <div class="list-score ${warning ? "warning" : ""}">RISK ${Number(alert.risk_score || 0).toFixed(3)}</div>
+        </div>
+        <div class="list-copy">${alert.reason}</div>
+        <div class="list-meta">${new Date(alert.timestamp).toLocaleTimeString()} • ${alert.auto ? "AUTO" : "MANUAL"} ALERT</div>
+      </div>
+    `;
   }).join("");
 }
 
-// ── Sparkline chart ───────────────────────────────────────────────────────────
-function drawChart() {
-  const canvas  = document.getElementById("sparkline");
-  const ctx     = canvas.getContext("2d");
-  const w       = canvas.offsetWidth;
-  const h       = canvas.offsetHeight || 200;
-  canvas.width  = w;
-  canvas.height = h;
+function renderMaintenance() {
+  const list = document.getElementById("maintenance-list");
+  document.getElementById("maintenance-count").textContent = String(maintenance.length);
 
+  if (!maintenance.length) {
+    list.innerHTML = '<div class="list-empty">NO BOOKINGS YET</div>';
+    return;
+  }
+
+  list.innerHTML = maintenance.slice(0, 10).map(slot => `
+    <div class="maintenance-item">
+      <div class="list-row">
+        <div class="list-label">${slot.machine_id}</div>
+        <div class="list-score" style="color:var(--accent)">${String(slot.priority || "normal").toUpperCase()}</div>
+      </div>
+      <div class="list-copy">Scheduled for ${new Date(slot.scheduled_at).toLocaleString()}</div>
+      <div class="list-meta">BOOKING ${slot.booking_id || "--"} • REQUESTED BY ${slot.requested_by || "agent"}</div>
+    </div>
+  `).join("");
+}
+
+function renderOpsFeed() {
+  const list = document.getElementById("ops-list");
+  document.getElementById("ops-count").textContent = String(opsFeed.length);
+
+  if (!opsFeed.length) {
+    list.innerHTML = '<div class="list-empty">AWAITING EVENTS</div>';
+    return;
+  }
+
+  list.innerHTML = opsFeed.map(item => `
+    <div class="ops-item ${item.tone}">
+      <div class="list-row">
+        <div class="list-label">${item.machineId}</div>
+        <div class="list-meta">${item.kind.toUpperCase()}</div>
+      </div>
+      <div class="ops-copy">${item.message}</div>
+      <div class="list-meta">${new Date(item.ts).toLocaleTimeString()}</div>
+    </div>
+  `).join("");
+}
+
+function drawChart() {
+  const canvas = document.getElementById("sparkline");
+  const ctx = canvas.getContext("2d");
+  const w = canvas.offsetWidth;
+  const h = canvas.offsetHeight || 220;
+  canvas.width = w;
+  canvas.height = h;
   ctx.clearRect(0, 0, w, h);
 
-  const hist  = state[chartMachine]?.history[chartSensor];
+  const hist = state[chartMachine]?.history[chartSensor];
   if (!hist || hist.length < 2) return;
 
-  const meta  = SENSOR_LABELS[chartSensor];
+  const meta = SENSOR_LABELS[chartSensor];
   const color = meta.color;
-  const min   = Math.min(...hist);
-  const max   = Math.max(...hist);
+  const min = Math.min(...hist);
+  const max = Math.max(...hist);
   const range = max - min || 1;
-
   const pad = { t: 20, b: 30, l: 40, r: 10 };
-  const pw  = w - pad.l - pad.r;
-  const ph  = h - pad.t - pad.b;
+  const pw = w - pad.l - pad.r;
+  const ph = h - pad.t - pad.b;
 
-  // Grid
   ctx.strokeStyle = "#1a2433";
-  ctx.lineWidth   = 1;
+  ctx.lineWidth = 1;
   for (let i = 0; i <= 4; i++) {
     const y = pad.t + (ph / 4) * i;
-    ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(w - pad.r, y); ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(pad.l, y);
+    ctx.lineTo(w - pad.r, y);
+    ctx.stroke();
     const val = max - (range / 4) * i;
     ctx.fillStyle = "#3a4a5c";
     ctx.font = "10px 'Share Tech Mono'";
@@ -650,11 +1030,10 @@ function drawChart() {
     ctx.fillText(val.toFixed(1), pad.l - 4, y + 3);
   }
 
-  // Line
   ctx.strokeStyle = color;
-  ctx.lineWidth   = 2;
+  ctx.lineWidth = 2;
   ctx.shadowColor = color;
-  ctx.shadowBlur  = 6;
+  ctx.shadowBlur = 6;
   ctx.beginPath();
   hist.forEach((v, i) => {
     const x = pad.l + (i / (hist.length - 1)) * pw;
@@ -664,7 +1043,6 @@ function drawChart() {
   ctx.stroke();
   ctx.shadowBlur = 0;
 
-  // Area fill
   const grad = ctx.createLinearGradient(0, pad.t, 0, pad.t + ph);
   grad.addColorStop(0, color + "33");
   grad.addColorStop(1, color + "00");
@@ -674,43 +1052,36 @@ function drawChart() {
   ctx.closePath();
   ctx.fill();
 
-  // Label
   ctx.fillStyle = color;
-  ctx.font      = "bold 12px 'Barlow Condensed'";
+  ctx.font = "bold 12px 'Barlow Condensed'";
   ctx.textAlign = "left";
-  ctx.letterSpacing = "2px";
-  ctx.fillText(`${chartMachine} — ${meta.label} (${meta.unit})`, pad.l, 14);
+  ctx.fillText(`${chartMachine} - ${meta.label} (${meta.unit})`, pad.l, 14);
 }
 
-function selectChartMachine(m) {
-  chartMachine = m;
+function selectChartMachine(machineId) {
+  chartMachine = machineId;
   buildChartSelector();
   drawChart();
 }
 
-function selectChartSensor(s) {
-  chartSensor = s;
+function selectChartSensor(sensorId) {
+  chartSensor = sensorId;
   buildChartSelector();
   drawChart();
 }
 
-function setDot(m, status) {
-  const dot = document.getElementById(`dot-${m}`);
-  if (dot) dot.className = `conn-dot ${status}`;
-}
-
-// ── Clock ────────────────────────────────────────────────────────────────────
 function tick() {
-  document.getElementById("global-ts").textContent =
-    new Date().toLocaleTimeString();
+  document.getElementById("global-ts").textContent = new Date().toLocaleTimeString();
 }
 
-// ── Init ─────────────────────────────────────────────────────────────────────
-buildCards();
 buildConnBar();
-buildChartSelector();
+buildCards();
+renderAlerts();
+renderMaintenance();
+renderOpsFeed();
 MACHINES.forEach(connectMachine);
-setInterval(pollAlerts, 3000);
+pollDashboardData();
+setInterval(pollDashboardData, 3000);
 setInterval(tick, 1000);
 setInterval(drawChart, 2000);
 tick();

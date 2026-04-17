@@ -24,7 +24,6 @@ import asyncio
 import json
 import os
 import sys
-import time
 import uuid
 from datetime import datetime, timezone
 from typing import Dict, List, Optional
@@ -51,6 +50,7 @@ app.add_middleware(
 # ── Global state ──────────────────────────────────────────────────────────────
 scorer_registry: Optional[ScorerRegistry] = None
 alerts_store:    List[dict]               = []   # priority-sorted alert log
+maintenance_store: List[dict]             = []   # newest first
 machine_state:   Dict[str, dict]          = {}   # latest reading per machine
 alert_priority_queue: List[dict]          = []   # sorted by risk_score desc
 
@@ -90,6 +90,7 @@ async def _request_node(method: str, path: str, *, json_body: Optional[dict] = N
 def _record_local_alert(machine_id: str, reason: str, risk_score: float, sensor_data: Optional[dict],
                         *, node_alert_id: Optional[str] = None, timestamp: Optional[str] = None,
                         auto: bool = False) -> dict:
+    global alert_priority_queue
     alert = {
         "alert_id": str(uuid.uuid4())[:8],
         "node_alert_id": node_alert_id,
@@ -103,7 +104,19 @@ def _record_local_alert(machine_id: str, reason: str, risk_score: float, sensor_
     }
     alerts_store.append(alert)
     alerts_store.sort(key=lambda a: a["risk_score"], reverse=True)
+    alert_priority_queue = list(alerts_store)
     return alert
+
+
+def _sort_alerts_by_risk(alerts: List[dict]) -> List[dict]:
+    return sorted(
+        alerts,
+        key=lambda alert: (
+            float(alert.get("risk_score", 0.0)),
+            alert.get("timestamp") or "",
+        ),
+        reverse=True,
+    )
 
 
 def _enrich_node_alerts(node_alerts: List[dict], limit: int) -> dict:
@@ -113,7 +126,7 @@ def _enrich_node_alerts(node_alerts: List[dict], limit: int) -> dict:
         if alert.get("node_alert_id")
     }
     enriched = []
-    for alert in node_alerts[:limit]:
+    for alert in node_alerts:
         local = local_by_node_id.get(alert.get("id"))
         enriched.append({
             "alert_id": alert.get("id") or (local or {}).get("alert_id"),
@@ -125,7 +138,8 @@ def _enrich_node_alerts(node_alerts: List[dict], limit: int) -> dict:
             "acknowledged": False,
             "auto": (local or {}).get("auto", False),
         })
-    return {"count": len(node_alerts), "alerts": enriched}
+    enriched = _sort_alerts_by_risk(enriched)
+    return {"count": len(node_alerts), "alerts": enriched[:limit]}
 
 
 # ── SSE stream endpoint ───────────────────────────────────────────────────────
@@ -166,9 +180,6 @@ async def stream(machine_id: str, request: Request):
                                 }
 
                             machine_state[machine_id] = scored
-
-                            if scored.get("risk_level") == "critical" and not scored.get("suppressed"):
-                                await _raise_alert_internal(machine_id, scored)
 
                             consecutive_gaps = 0
                             yield f"data: {json.dumps(scored)}\n\n"
@@ -229,32 +240,6 @@ async def raise_alert(payload: AlertRequest):
     return {"status": "alert_raised", "alert": alert}
 
 
-async def _raise_alert_internal(machine_id: str, scored: dict):
-    """Auto-raise alert from agent loop (deduped within 30s per machine)."""
-    now = time.time()
-    for a in reversed(alerts_store[-20:]):
-        if a["machine_id"] == machine_id:
-            ts = datetime.fromisoformat(a["timestamp"]).timestamp()
-            if now - ts < 30:
-                return   # dedupe: already alerted this machine recently
-    sensor_data = {k: scored.get(k) for k in ["temperature_C", "vibration_mm_s", "rpm", "current_A", "status"]}
-    node_data = await _request_node("POST", "/alert", json_body={
-        "machine_id": machine_id,
-        "reason": scored.get("explanation", "Critical anomaly detected."),
-        "reading": sensor_data,
-    })
-    node_alert = node_data.get("alert", {})
-    _record_local_alert(
-        machine_id,
-        scored.get("explanation", "Critical anomaly detected."),
-        scored.get("risk_score", 1.0),
-        sensor_data,
-        node_alert_id=node_alert.get("id"),
-        timestamp=node_alert.get("triggered_at"),
-        auto=True,
-    )
-
-
 # ── Schedule maintenance endpoint (Bonus) ────────────────────────────────────
 class ScheduleRequest(BaseModel):
     machine_id:  str
@@ -278,7 +263,13 @@ async def schedule_maintenance(payload: ScheduleRequest):
         "requested_by": payload.requested_by,
         "status": "confirmed",
     }
+    maintenance_store.insert(0, slot)
     return {"status": "scheduled", "slot": slot}
+
+
+@app.get("/maintenance")
+async def get_maintenance(limit: int = 20):
+    return {"count": len(maintenance_store), "slots": maintenance_store[:limit]}
 
 
 # ── Status / dashboard endpoints ──────────────────────────────────────────────
@@ -304,10 +295,26 @@ async def dashboard_data():
     """Polling endpoint for the frontend dashboard."""
     node_alerts = await _request_node("GET", "/alerts")
     enriched_alerts = _enrich_node_alerts(node_alerts.get("alerts", []), 10)
+    ranked_machines = sorted(
+        [
+            {
+                "machine_id": machine_id,
+                "risk_level": machine_state.get(machine_id, {}).get("risk_level", "unknown"),
+                "risk_score": machine_state.get(machine_id, {}).get("risk_score", 0.0),
+                "timestamp": machine_state.get(machine_id, {}).get("timestamp"),
+                "explanation": machine_state.get(machine_id, {}).get("explanation"),
+            }
+            for machine_id in MACHINES
+        ],
+        key=lambda item: item["risk_score"],
+        reverse=True,
+    )
     return {
         "timestamp":    datetime.now(timezone.utc).isoformat(),
         "machine_states": machine_state,
         "recent_alerts": enriched_alerts["alerts"],
+        "recent_maintenance": maintenance_store[:10],
+        "ranked_machines": ranked_machines,
         "summary": {
             m: {
                 "risk_level": machine_state.get(m, {}).get("risk_level", "unknown"),
