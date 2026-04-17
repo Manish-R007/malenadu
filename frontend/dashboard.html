@@ -1,0 +1,720 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>PredictaMaint — Industrial AI Dashboard</title>
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Barlow+Condensed:wght@300;500;700;900&display=swap" rel="stylesheet"/>
+<style>
+  :root {
+    --bg:        #090c0f;
+    --panel:     #0d1117;
+    --border:    #1a2433;
+    --accent:    #00d4ff;
+    --green:     #00ff88;
+    --yellow:    #ffcc00;
+    --red:       #ff3355;
+    --muted:     #3a4a5c;
+    --text:      #c8d8e8;
+    --mono:      'Share Tech Mono', monospace;
+    --head:      'Barlow Condensed', sans-serif;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 13px;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* Scanline overlay */
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgba(0,0,0,0.05) 2px,
+      rgba(0,0,0,0.05) 4px
+    );
+    pointer-events: none;
+    z-index: 9999;
+  }
+
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 24px;
+    border-bottom: 1px solid var(--border);
+    background: rgba(0,212,255,0.03);
+  }
+
+  .logo {
+    font-family: var(--head);
+    font-weight: 900;
+    font-size: 22px;
+    letter-spacing: 4px;
+    text-transform: uppercase;
+    color: var(--accent);
+    text-shadow: 0 0 20px rgba(0,212,255,0.5);
+  }
+
+  .logo span { color: var(--text); }
+
+  .header-meta {
+    display: flex;
+    gap: 24px;
+    align-items: center;
+    font-size: 11px;
+    color: var(--muted);
+    letter-spacing: 1px;
+  }
+
+  .live-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--green);
+    box-shadow: 0 0 8px var(--green);
+    animation: pulse 1.5s infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+  }
+
+  main {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: auto auto;
+    gap: 1px;
+    background: var(--border);
+    min-height: calc(100vh - 50px);
+  }
+
+  @media (max-width: 900px) {
+    main { grid-template-columns: 1fr; }
+  }
+
+  /* ── Machine cards ──────────────────────────────── */
+  .machines-panel {
+    grid-column: 1 / 3;
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 1px;
+    background: var(--border);
+  }
+
+  @media (max-width: 1100px) {
+    .machines-panel { grid-template-columns: repeat(2, 1fr); }
+  }
+
+  .machine-card {
+    background: var(--panel);
+    padding: 18px;
+    position: relative;
+    overflow: hidden;
+    transition: background 0.3s;
+  }
+
+  .machine-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: var(--accent);
+    transition: background 0.3s, box-shadow 0.3s;
+  }
+
+  .machine-card.warning::before { background: var(--yellow); box-shadow: 0 0 12px var(--yellow); }
+  .machine-card.critical::before { background: var(--red); box-shadow: 0 0 12px var(--red); }
+  .machine-card.normal::before  { background: var(--green); box-shadow: 0 0 8px var(--green); }
+
+  .machine-card.critical { background: rgba(255,51,85,0.04); }
+  .machine-card.warning  { background: rgba(255,204,0,0.03); }
+
+  .card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 14px;
+  }
+
+  .machine-name {
+    font-family: var(--head);
+    font-weight: 700;
+    font-size: 20px;
+    letter-spacing: 2px;
+    color: var(--accent);
+  }
+
+  .risk-badge {
+    font-family: var(--head);
+    font-weight: 700;
+    font-size: 11px;
+    letter-spacing: 2px;
+    padding: 3px 8px;
+    border-radius: 2px;
+    text-transform: uppercase;
+  }
+
+  .risk-badge.normal   { background: rgba(0,255,136,0.15); color: var(--green); }
+  .risk-badge.warning  { background: rgba(255,204,0,0.15);  color: var(--yellow); }
+  .risk-badge.critical { background: rgba(255,51,85,0.2);   color: var(--red); }
+  .risk-badge.unknown  { background: rgba(58,74,92,0.3);    color: var(--muted); }
+
+  .sensors {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+
+  .sensor-item {
+    background: rgba(255,255,255,0.02);
+    border: 1px solid var(--border);
+    padding: 8px 10px;
+    border-radius: 2px;
+  }
+
+  .sensor-label {
+    font-size: 10px;
+    color: var(--muted);
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    margin-bottom: 4px;
+  }
+
+  .sensor-value {
+    font-size: 18px;
+    font-family: var(--head);
+    font-weight: 700;
+    color: var(--text);
+    transition: color 0.3s;
+  }
+
+  .sensor-value.alert-high { color: var(--red) !important; }
+  .sensor-value.alert-mid  { color: var(--yellow) !important; }
+
+  .sensor-unit {
+    font-size: 10px;
+    color: var(--muted);
+    margin-left: 2px;
+  }
+
+  /* Risk score bar */
+  .risk-bar-wrap {
+    margin-bottom: 10px;
+  }
+
+  .risk-bar-label {
+    display: flex;
+    justify-content: space-between;
+    font-size: 10px;
+    color: var(--muted);
+    margin-bottom: 4px;
+    letter-spacing: 1px;
+  }
+
+  .risk-bar-track {
+    height: 4px;
+    background: rgba(255,255,255,0.05);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+
+  .risk-bar-fill {
+    height: 100%;
+    border-radius: 2px;
+    transition: width 0.8s ease, background 0.3s;
+  }
+
+  /* Explanation text */
+  .explanation {
+    font-size: 11px;
+    color: var(--muted);
+    line-height: 1.5;
+    border-left: 2px solid var(--border);
+    padding-left: 8px;
+    min-height: 32px;
+    transition: color 0.3s;
+  }
+
+  .explanation.has-alert { color: var(--text); border-left-color: var(--yellow); }
+  .explanation.is-critical { color: #ff8fa0; border-left-color: var(--red); }
+
+  /* Timestamp */
+  .card-ts { font-size: 10px; color: var(--muted); margin-top: 8px; letter-spacing: 1px; }
+
+  /* ── Bottom panels ────────────────────────────── */
+  .alerts-panel, .chart-panel {
+    background: var(--panel);
+    padding: 20px;
+  }
+
+  .panel-title {
+    font-family: var(--head);
+    font-weight: 700;
+    font-size: 16px;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 16px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .alert-count {
+    background: var(--red);
+    color: white;
+    font-size: 11px;
+    padding: 1px 6px;
+    border-radius: 10px;
+    font-family: var(--mono);
+  }
+
+  /* Alert list */
+  .alert-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    max-height: 340px;
+    overflow-y: auto;
+  }
+
+  .alert-list::-webkit-scrollbar { width: 4px; }
+  .alert-list::-webkit-scrollbar-track { background: transparent; }
+  .alert-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  .alert-item {
+    background: rgba(255,255,255,0.02);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--red);
+    padding: 8px 12px;
+    display: grid;
+    grid-template-columns: 90px 80px 1fr;
+    gap: 8px;
+    align-items: start;
+    font-size: 11px;
+    animation: slideIn 0.3s ease;
+  }
+
+  .alert-item.warning { border-left-color: var(--yellow); }
+
+  @keyframes slideIn {
+    from { opacity: 0; transform: translateY(-6px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  .alert-machine {
+    font-family: var(--head);
+    font-weight: 700;
+    font-size: 13px;
+    color: var(--accent);
+  }
+
+  .alert-score { color: var(--red); font-weight: bold; }
+  .alert-score.warning { color: var(--yellow); }
+  .alert-reason { color: var(--text); line-height: 1.4; }
+  .alert-ts { color: var(--muted); font-size: 10px; grid-column: 1 / 4; }
+
+  .no-alerts {
+    text-align: center;
+    padding: 40px 0;
+    color: var(--muted);
+    font-size: 12px;
+    letter-spacing: 1px;
+  }
+
+  /* Sparkline chart area */
+  .chart-panel canvas {
+    width: 100%;
+    max-height: 200px;
+  }
+
+  .chart-selector {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+  }
+
+  .chart-btn {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--muted);
+    font-family: var(--mono);
+    font-size: 11px;
+    padding: 4px 10px;
+    cursor: pointer;
+    letter-spacing: 1px;
+    transition: all 0.2s;
+  }
+
+  .chart-btn.active, .chart-btn:hover {
+    background: rgba(0,212,255,0.1);
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+
+  /* Connection status bar */
+  .conn-bar {
+    position: fixed;
+    bottom: 0; left: 0; right: 0;
+    background: var(--panel);
+    border-top: 1px solid var(--border);
+    padding: 6px 24px;
+    display: flex;
+    gap: 24px;
+    font-size: 11px;
+    color: var(--muted);
+    letter-spacing: 1px;
+    z-index: 100;
+  }
+
+  .conn-item { display: flex; align-items: center; gap: 6px; }
+  .conn-dot { width: 6px; height: 6px; border-radius: 50%; }
+  .conn-dot.ok  { background: var(--green); box-shadow: 0 0 6px var(--green); }
+  .conn-dot.err { background: var(--red); }
+  .conn-dot.connecting { background: var(--yellow); animation: pulse 1s infinite; }
+
+  body { padding-bottom: 34px; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">Predicta<span>Maint</span></div>
+  <div class="header-meta">
+    <div class="live-dot"></div>
+    <span>LIVE MONITORING</span>
+    <span id="global-ts">--:--:--</span>
+    <span id="active-alerts-header">0 ALERTS</span>
+  </div>
+</header>
+
+<main>
+  <div class="machines-panel" id="machines-panel">
+    <!-- Cards injected by JS -->
+  </div>
+
+  <div class="alerts-panel">
+    <div class="panel-title">
+      🚨 Alert Queue
+      <span class="alert-count" id="alert-count">0</span>
+    </div>
+    <div class="alert-list" id="alert-list">
+      <div class="no-alerts">NO ACTIVE ALERTS</div>
+    </div>
+  </div>
+
+  <div class="chart-panel">
+    <div class="panel-title">📈 Sensor History</div>
+    <div class="chart-selector" id="chart-selector"></div>
+    <canvas id="sparkline" height="200"></canvas>
+  </div>
+</main>
+
+<div class="conn-bar" id="conn-bar">
+  <!-- Connection status dots injected by JS -->
+</div>
+
+<script>
+const BASE     = "http://localhost:8000";
+const MACHINES = ["CNC_01", "CNC_02", "HVAC_01", "PUMP_01"];
+const MAX_HIST = 60;  // points to keep per sensor per machine
+
+// ── State ────────────────────────────────────────────────────────────────────
+const state = {};
+MACHINES.forEach(m => {
+  state[m] = {
+    reading: null,
+    history: { temperature_C: [], vibration_mm_s: [], rpm: [], current_A: [] },
+    connStatus: "connecting",
+    evtSource: null,
+  };
+});
+
+let alerts    = [];
+let chartMachine = MACHINES[0];
+let chartSensor  = "temperature_C";
+const SENSOR_LABELS = {
+  temperature_C:  { label: "Temp",  unit: "°C",   color: "#ff6b6b" },
+  vibration_mm_s: { label: "Vibr",  unit: "mm/s", color: "#ffd93d" },
+  rpm:            { label: "RPM",   unit: "rpm",  color: "#6bffb8" },
+  current_A:      { label: "Curr",  unit: "A",    color: "#74b9ff" },
+};
+
+// ── Build initial UI ─────────────────────────────────────────────────────────
+function buildCards() {
+  const panel = document.getElementById("machines-panel");
+  panel.innerHTML = MACHINES.map(m => `
+    <div class="machine-card" id="card-${m}">
+      <div class="card-header">
+        <div class="machine-name">${m}</div>
+        <div class="risk-badge unknown" id="badge-${m}">CONNECTING</div>
+      </div>
+      <div class="sensors" id="sensors-${m}">
+        ${Object.entries(SENSOR_LABELS).map(([k,v]) => `
+          <div class="sensor-item">
+            <div class="sensor-label">${v.label}</div>
+            <div class="sensor-value" id="sv-${m}-${k}">--<span class="sensor-unit">${v.unit}</span></div>
+          </div>
+        `).join("")}
+      </div>
+      <div class="risk-bar-wrap">
+        <div class="risk-bar-label">
+          <span>RISK SCORE</span>
+          <span id="rs-${m}">0.000</span>
+        </div>
+        <div class="risk-bar-track">
+          <div class="risk-bar-fill" id="rb-${m}" style="width:0%;background:var(--green)"></div>
+        </div>
+      </div>
+      <div class="explanation" id="exp-${m}">Awaiting data…</div>
+      <div class="card-ts" id="ts-${m}"></div>
+    </div>
+  `).join("");
+}
+
+function buildConnBar() {
+  const bar = document.getElementById("conn-bar");
+  bar.innerHTML = MACHINES.map(m => `
+    <div class="conn-item">
+      <div class="conn-dot connecting" id="dot-${m}"></div>
+      <span>${m}</span>
+    </div>
+  `).join("") + '<span style="margin-left:auto">API: ' + BASE + '</span>';
+}
+
+function buildChartSelector() {
+  const wrap = document.getElementById("chart-selector");
+  wrap.innerHTML = MACHINES.map(m =>
+    `<button class="chart-btn${m===chartMachine?' active':''}" onclick="selectChartMachine('${m}')">${m}</button>`
+  ).join("") + "<span style='margin-left:8px;color:var(--muted)'>|</span>" +
+  Object.entries(SENSOR_LABELS).map(([k,v]) =>
+    `<button class="chart-btn${k===chartSensor?' active':''}" onclick="selectChartSensor('${k}')">${v.label}</button>`
+  ).join("");
+}
+
+// ── SSE Connection ────────────────────────────────────────────────────────────
+function connectMachine(machine_id) {
+  const s = state[machine_id];
+  if (s.evtSource) s.evtSource.close();
+
+  const es = new EventSource(`${BASE}/stream/${machine_id}`);
+  s.evtSource = es;
+  s.connStatus = "connecting";
+  setDot(machine_id, "connecting");
+
+  es.onmessage = (e) => {
+    const data = JSON.parse(e.data);
+    if (data.signal === "data_absent") {
+      setDot(machine_id, "err");
+      return;
+    }
+    s.connStatus = "ok";
+    s.reading    = data;
+    setDot(machine_id, "ok");
+
+    // Append to history
+    for (const key of Object.keys(s.history)) {
+      s.history[key].push(data[key] ?? 0);
+      if (s.history[key].length > MAX_HIST) s.history[key].shift();
+    }
+
+    updateCard(machine_id, data);
+    drawChart();
+  };
+
+  es.onerror = () => {
+    s.connStatus = "err";
+    setDot(machine_id, "err");
+    es.close();
+    setTimeout(() => connectMachine(machine_id), 3000);
+  };
+}
+
+// ── Update card ───────────────────────────────────────────────────────────────
+function updateCard(m, d) {
+  const card  = document.getElementById(`card-${m}`);
+  const badge = document.getElementById(`badge-${m}`);
+  const level = d.risk_level || "normal";
+  const score = d.risk_score || 0;
+
+  card.className  = `machine-card ${level}`;
+  badge.className = `risk-badge ${level}`;
+  badge.textContent = level.toUpperCase();
+
+  // Sensors
+  for (const [key, meta] of Object.entries(SENSOR_LABELS)) {
+    const el  = document.getElementById(`sv-${m}-${key}`);
+    const val = d[key];
+    if (val == null) continue;
+    el.innerHTML = `${val}<span class="sensor-unit">${meta.unit}</span>`;
+    const z = (d.z_scores || {})[key] || 0;
+    el.className = "sensor-value" + (z > 4 ? " alert-high" : z > 2.5 ? " alert-mid" : "");
+  }
+
+  // Risk bar
+  document.getElementById(`rs-${m}`).textContent = score.toFixed(3);
+  const bar   = document.getElementById(`rb-${m}`);
+  bar.style.width      = `${Math.min(score * 100, 100)}%`;
+  bar.style.background = score > 0.65 ? "var(--red)" : score > 0.35 ? "var(--yellow)" : "var(--green)";
+
+  // Explanation
+  const expEl = document.getElementById(`exp-${m}`);
+  expEl.textContent = d.explanation || "";
+  expEl.className   = "explanation" + (level === "critical" ? " is-critical" : level === "warning" ? " has-alert" : "");
+
+  // Timestamp
+  const ts = new Date(d.timestamp);
+  document.getElementById(`ts-${m}`).textContent = ts.toLocaleTimeString();
+}
+
+// ── Alerts polling ─────────────────────────────────────────────────────────
+async function pollAlerts() {
+  try {
+    const res  = await fetch(`${BASE}/alerts?limit=20`);
+    const data = await res.json();
+    alerts = data.alerts || [];
+    renderAlerts();
+  } catch {}
+}
+
+function renderAlerts() {
+  const list  = document.getElementById("alert-list");
+  const count = document.getElementById("alert-count");
+  count.textContent = alerts.length;
+  document.getElementById("active-alerts-header").textContent = `${alerts.length} ALERTS`;
+
+  if (!alerts.length) {
+    list.innerHTML = '<div class="no-alerts">NO ACTIVE ALERTS</div>';
+    return;
+  }
+  list.innerHTML = alerts.slice(0, 15).map(a => {
+    const isWarn = a.risk_score < 0.65;
+    const ts = new Date(a.timestamp).toLocaleTimeString();
+    return `
+      <div class="alert-item ${isWarn ? 'warning' : ''}">
+        <div class="alert-machine">${a.machine_id}</div>
+        <div class="alert-score ${isWarn?'warning':''}">⚡ ${a.risk_score.toFixed(3)}</div>
+        <div class="alert-reason">${a.reason}</div>
+        <div class="alert-ts">${ts}</div>
+      </div>`;
+  }).join("");
+}
+
+// ── Sparkline chart ───────────────────────────────────────────────────────────
+function drawChart() {
+  const canvas  = document.getElementById("sparkline");
+  const ctx     = canvas.getContext("2d");
+  const w       = canvas.offsetWidth;
+  const h       = canvas.offsetHeight || 200;
+  canvas.width  = w;
+  canvas.height = h;
+
+  ctx.clearRect(0, 0, w, h);
+
+  const hist  = state[chartMachine]?.history[chartSensor];
+  if (!hist || hist.length < 2) return;
+
+  const meta  = SENSOR_LABELS[chartSensor];
+  const color = meta.color;
+  const min   = Math.min(...hist);
+  const max   = Math.max(...hist);
+  const range = max - min || 1;
+
+  const pad = { t: 20, b: 30, l: 40, r: 10 };
+  const pw  = w - pad.l - pad.r;
+  const ph  = h - pad.t - pad.b;
+
+  // Grid
+  ctx.strokeStyle = "#1a2433";
+  ctx.lineWidth   = 1;
+  for (let i = 0; i <= 4; i++) {
+    const y = pad.t + (ph / 4) * i;
+    ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(w - pad.r, y); ctx.stroke();
+    const val = max - (range / 4) * i;
+    ctx.fillStyle = "#3a4a5c";
+    ctx.font = "10px 'Share Tech Mono'";
+    ctx.textAlign = "right";
+    ctx.fillText(val.toFixed(1), pad.l - 4, y + 3);
+  }
+
+  // Line
+  ctx.strokeStyle = color;
+  ctx.lineWidth   = 2;
+  ctx.shadowColor = color;
+  ctx.shadowBlur  = 6;
+  ctx.beginPath();
+  hist.forEach((v, i) => {
+    const x = pad.l + (i / (hist.length - 1)) * pw;
+    const y = pad.t + ph - ((v - min) / range) * ph;
+    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  });
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+
+  // Area fill
+  const grad = ctx.createLinearGradient(0, pad.t, 0, pad.t + ph);
+  grad.addColorStop(0, color + "33");
+  grad.addColorStop(1, color + "00");
+  ctx.fillStyle = grad;
+  ctx.lineTo(pad.l + pw, pad.t + ph);
+  ctx.lineTo(pad.l, pad.t + ph);
+  ctx.closePath();
+  ctx.fill();
+
+  // Label
+  ctx.fillStyle = color;
+  ctx.font      = "bold 12px 'Barlow Condensed'";
+  ctx.textAlign = "left";
+  ctx.letterSpacing = "2px";
+  ctx.fillText(`${chartMachine} — ${meta.label} (${meta.unit})`, pad.l, 14);
+}
+
+function selectChartMachine(m) {
+  chartMachine = m;
+  buildChartSelector();
+  drawChart();
+}
+
+function selectChartSensor(s) {
+  chartSensor = s;
+  buildChartSelector();
+  drawChart();
+}
+
+function setDot(m, status) {
+  const dot = document.getElementById(`dot-${m}`);
+  if (dot) dot.className = `conn-dot ${status}`;
+}
+
+// ── Clock ────────────────────────────────────────────────────────────────────
+function tick() {
+  document.getElementById("global-ts").textContent =
+    new Date().toLocaleTimeString();
+}
+
+// ── Init ─────────────────────────────────────────────────────────────────────
+buildCards();
+buildConnBar();
+buildChartSelector();
+MACHINES.forEach(connectMachine);
+setInterval(pollAlerts, 3000);
+setInterval(tick, 1000);
+setInterval(drawChart, 2000);
+tick();
+window.addEventListener("resize", drawChart);
+</script>
+</body>
+</html>
