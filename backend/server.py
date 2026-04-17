@@ -53,6 +53,8 @@ alerts_store:    List[dict]               = []   # priority-sorted alert log
 maintenance_store: List[dict]             = []   # newest first
 machine_state:   Dict[str, dict]          = {}   # latest reading per machine
 alert_priority_queue: List[dict]          = []   # sorted by risk_score desc
+dashboard_subscribers: List[asyncio.Queue] = []
+machine_subscribers: List[asyncio.Queue] = []
 
 MACHINES = ["CNC_01", "CNC_02", "PUMP_03", "CONVEYOR_04"]
 NODE_BASE_URL = os.environ.get("MALENDAU_BASE_URL", "http://localhost:3000")
@@ -106,6 +108,49 @@ def _record_local_alert(machine_id: str, reason: str, risk_score: float, sensor_
     alerts_store.sort(key=lambda a: a["risk_score"], reverse=True)
     alert_priority_queue = list(alerts_store)
     return alert
+
+
+async def _publish_dashboard_event(kind: str, payload: dict):
+    if not dashboard_subscribers:
+        return
+
+    event = {
+        "event": kind,
+        "payload": payload,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+
+    stale = []
+    for queue in dashboard_subscribers:
+        try:
+            queue.put_nowait(event)
+        except asyncio.QueueFull:
+            stale.append(queue)
+
+    for queue in stale:
+        if queue in dashboard_subscribers:
+            dashboard_subscribers.remove(queue)
+
+
+async def _publish_machine_event(payload: dict):
+    if not machine_subscribers:
+        return
+
+    event = {
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "payload": payload,
+    }
+
+    stale = []
+    for queue in machine_subscribers:
+        try:
+            queue.put_nowait(event)
+        except asyncio.QueueFull:
+            stale.append(queue)
+
+    for queue in stale:
+        if queue in machine_subscribers:
+            machine_subscribers.remove(queue)
 
 
 def _sort_alerts_by_risk(alerts: List[dict]) -> List[dict]:
@@ -182,6 +227,7 @@ async def stream(machine_id: str, request: Request):
                             machine_state[machine_id] = scored
 
                             consecutive_gaps = 0
+                            await _publish_machine_event(scored)
                             yield f"data: {json.dumps(scored)}\n\n"
 
             except asyncio.CancelledError:
@@ -195,6 +241,7 @@ async def stream(machine_id: str, request: Request):
                     "signal":     "data_absent",
                     "consecutive_gaps": consecutive_gaps,
                 }
+                await _publish_machine_event(gap_event)
                 yield f"data: {json.dumps(gap_event)}\n\n"
                 await asyncio.sleep(min(2 * consecutive_gaps, 10))
 
@@ -211,6 +258,36 @@ async def get_history(machine_id: str, limit: int = 500):
     data = await _request_node("GET", f"/history/{machine_id}")
     readings = data.get("readings", [])[-limit:]
     return {"machine_id": machine_id, "count": len(readings), "data": readings}
+
+
+@app.get("/machine-events")
+async def machine_events(request: Request):
+    async def generator():
+        queue: asyncio.Queue = asyncio.Queue(maxsize=200)
+        machine_subscribers.append(queue)
+
+        snapshot = {
+            "type": "snapshot",
+            "machines": [machine_state.get(machine_id) for machine_id in MACHINES if machine_state.get(machine_id)],
+        }
+        yield f"data: {json.dumps(snapshot)}\n\n"
+
+        try:
+            while not await request.is_disconnected():
+                try:
+                    event = await asyncio.wait_for(queue.get(), timeout=15)
+                    yield f"data: {json.dumps(event)}\n\n"
+                except asyncio.TimeoutError:
+                    yield ": keep-alive\n\n"
+        finally:
+            if queue in machine_subscribers:
+                machine_subscribers.remove(queue)
+
+    return StreamingResponse(
+        generator(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 # ── Alert endpoint ────────────────────────────────────────────────────────────
@@ -237,6 +314,7 @@ async def raise_alert(payload: AlertRequest):
         node_alert_id=node_alert.get("id"),
         timestamp=node_alert.get("triggered_at"),
     )
+    await _publish_dashboard_event("alert", alert)
     return {"status": "alert_raised", "alert": alert}
 
 
@@ -264,12 +342,43 @@ async def schedule_maintenance(payload: ScheduleRequest):
         "status": "confirmed",
     }
     maintenance_store.insert(0, slot)
+    await _publish_dashboard_event("maintenance", slot)
     return {"status": "scheduled", "slot": slot}
 
 
 @app.get("/maintenance")
 async def get_maintenance(limit: int = 20):
     return {"count": len(maintenance_store), "slots": maintenance_store[:limit]}
+
+
+@app.get("/dashboard-events")
+async def dashboard_events(request: Request):
+    async def generator():
+        queue: asyncio.Queue = asyncio.Queue(maxsize=100)
+        dashboard_subscribers.append(queue)
+
+        snapshot = {
+            "alerts": alerts_store[:12],
+            "maintenance": maintenance_store[:10],
+        }
+        yield f"data: {json.dumps({'event': 'snapshot', 'payload': snapshot, 'timestamp': datetime.now(timezone.utc).isoformat()})}\n\n"
+
+        try:
+            while not await request.is_disconnected():
+                try:
+                    event = await asyncio.wait_for(queue.get(), timeout=15)
+                    yield f"data: {json.dumps(event)}\n\n"
+                except asyncio.TimeoutError:
+                    yield ": keep-alive\n\n"
+        finally:
+            if queue in dashboard_subscribers:
+                dashboard_subscribers.remove(queue)
+
+    return StreamingResponse(
+        generator(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 # ── Status / dashboard endpoints ──────────────────────────────────────────────
