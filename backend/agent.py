@@ -123,6 +123,7 @@ async def raise_alert(session: aiohttp.ClientSession, queued: dict):
             machine_id,
             RISK_TO_PRIORITY.get(queued["risk_level"], "normal"),
             alert_id,
+            queued["risk_score"],
         )
 
 
@@ -131,11 +132,13 @@ async def schedule_maintenance(
     machine_id: str,
     priority: str,
     alert_id: str,
+    risk_score: float,
 ):
     payload = {
         "machine_id": machine_id,
         "priority": priority,
         "alert_id": alert_id,
+        "risk_score": risk_score,
         "requested_by": "agent",
     }
 

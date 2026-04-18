@@ -323,6 +323,7 @@ class ScheduleRequest(BaseModel):
     machine_id:  str
     priority:    str = "normal"   # low / normal / high / critical
     alert_id:    Optional[str] = None
+    risk_score:  float = 0.0
     requested_by: str = "agent"
 
 
@@ -330,17 +331,24 @@ class ScheduleRequest(BaseModel):
 async def schedule_maintenance(payload: ScheduleRequest):
     node_data = await _request_node("POST", "/schedule-maintenance", json_body={
         "machine_id": payload.machine_id,
+        "priority": payload.priority,
+        "risk_score": payload.risk_score,
     })
     booking = node_data.get("booking", {})
     slot = {
         "booking_id": booking.get("id"),
         "machine_id": booking.get("machine_id", payload.machine_id),
         "priority": payload.priority,
+        "risk_score": booking.get("risk_score", payload.risk_score),
         "scheduled_at": booking.get("slot"),
         "alert_id": payload.alert_id,
         "requested_by": payload.requested_by,
         "status": "confirmed",
     }
+    maintenance_store[:] = [
+        item for item in maintenance_store
+        if item.get("machine_id") != slot["machine_id"]
+    ]
     maintenance_store.insert(0, slot)
     await _publish_dashboard_event("maintenance", slot)
     return {"status": "scheduled", "slot": slot}

@@ -28,6 +28,13 @@ SENSOR_COLS   = ["temperature_C", "vibration_mm_s", "rpm", "current_A"]
 MODEL_DIR     = os.path.join(os.path.dirname(__file__), "../data/models")
 BASELINE_FILE = os.path.join(os.path.dirname(__file__), "../data/baselines.json")
 
+INDICATION_LABELS = {
+    "temperature_C": "Thermal stress or cooling failure",
+    "vibration_mm_s": "Bearing wear",
+    "rpm": "Load or mechanical issue",
+    "current_A": "Motor overload",
+}
+
 # Window sizes for noise suppression and drift detection
 SPIKE_WINDOW  = 5    # if anomaly in <2 of last 5 → transient, suppress
 DRIFT_WINDOW  = 20   # readings to compute rolling mean for drift
@@ -157,10 +164,13 @@ class MachineScorer:
             b   = self.baseline[col]
             val = features[col]
             direction = "above" if val > b["max_normal"] else "below"
+            indication = INDICATION_LABELS.get(col)
             parts.append(
                 f"{col} is {val} ({direction} normal range "
                 f"[{b['min_normal']}–{b['max_normal']}], z={z_scores[col]:.1f}σ)."
             )
+            if indication:
+                parts.append(f"What it indicates: {indication}.")
 
         for col, dz in drift_flags.items():
             parts.append(f"Slow upward drift in {col} over last {DRIFT_WINDOW} readings (z={dz:.1f}σ) — possible gradual wear.")
