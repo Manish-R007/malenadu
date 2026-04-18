@@ -25,7 +25,8 @@ import json
 import os
 import sys
 import uuid
-from datetime import datetime, timezone
+from collections import defaultdict
+from datetime import date, datetime, timezone
 from typing import Dict, List, Optional
 
 import aiohttp
@@ -185,6 +186,67 @@ def _enrich_node_alerts(node_alerts: List[dict], limit: int) -> dict:
         })
     enriched = _sort_alerts_by_risk(enriched)
     return {"count": len(node_alerts), "alerts": enriched[:limit]}
+
+
+def _parse_timestamp(value: Optional[str]) -> Optional[datetime]:
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def _build_sensor_stats(readings: List[dict]) -> dict:
+    stats = {}
+    for sensor in ["temperature_C", "vibration_mm_s", "rpm", "current_A"]:
+        values = [
+            float(reading[sensor])
+            for reading in readings
+            if reading.get(sensor) is not None
+        ]
+        if not values:
+            stats[sensor] = {"min": None, "max": None, "avg": None}
+            continue
+        stats[sensor] = {
+            "min": round(min(values), 4),
+            "max": round(max(values), 4),
+            "avg": round(sum(values) / len(values), 4),
+        }
+    return stats
+
+
+def _serialize_warning_event(reading: dict) -> dict:
+    return {
+        "timestamp": reading.get("timestamp"),
+        "status": reading.get("status"),
+        "temperature_C": reading.get("temperature_C"),
+        "vibration_mm_s": reading.get("vibration_mm_s"),
+        "rpm": reading.get("rpm"),
+        "current_A": reading.get("current_A"),
+    }
+
+
+def _warning_counts_by_day(readings: List[dict]) -> List[dict]:
+    grouped: Dict[str, dict] = defaultdict(lambda: {"warning": 0, "fault": 0})
+    for reading in readings:
+        ts = _parse_timestamp(reading.get("timestamp"))
+        if ts is None:
+            continue
+        key = ts.date().isoformat()
+        status = (reading.get("status") or "").lower()
+        if status == "warning":
+            grouped[key]["warning"] += 1
+        elif status == "fault":
+            grouped[key]["fault"] += 1
+
+    return [
+        {"date": day, "warning": counts["warning"], "fault": counts["fault"]}
+        for day, counts in sorted(grouped.items())
+    ]
 
 
 # ── SSE stream endpoint ───────────────────────────────────────────────────────
@@ -438,6 +500,97 @@ async def dashboard_data():
                 "risk_score": machine_state.get(m, {}).get("risk_score", 0),
             }
             for m in MACHINES
+        },
+    }
+
+
+@app.get("/analytics/{machine_id}")
+async def machine_analytics(machine_id: str, for_date: Optional[str] = None):
+    if machine_id not in MACHINES:
+        raise HTTPException(status_code=404, detail=f"Unknown machine_id: {machine_id}")
+
+    try:
+        selected_date = date.fromisoformat(for_date) if for_date else datetime.now(timezone.utc).date()
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="for_date must be in YYYY-MM-DD format") from exc
+
+    history_payload = await _request_node("GET", f"/history/{machine_id}")
+    readings = history_payload.get("readings", [])
+
+    dated_readings = []
+    for reading in readings:
+        ts = _parse_timestamp(reading.get("timestamp"))
+        if ts is None:
+            continue
+        dated_readings.append((ts, reading))
+
+    selected_readings = [
+        reading for ts, reading in dated_readings
+        if ts.date() == selected_date
+    ]
+    warning_events = [
+        reading for _, reading in dated_readings
+        if (reading.get("status") or "").lower() in {"warning", "fault"}
+    ]
+    selected_warning_events = [
+        reading for reading in selected_readings
+        if (reading.get("status") or "").lower() in {"warning", "fault"}
+    ]
+
+    node_alerts = await _request_node("GET", "/alerts")
+    enriched_alerts = _enrich_node_alerts(node_alerts.get("alerts", []), limit=200)["alerts"]
+    machine_alerts = [
+        alert for alert in enriched_alerts
+        if alert.get("machine_id") == machine_id
+    ]
+
+    machine_maintenance = [
+        slot for slot in maintenance_store
+        if slot.get("machine_id") == machine_id
+    ]
+
+    status_counts = {"running": 0, "warning": 0, "fault": 0}
+    for reading in selected_readings:
+        status = (reading.get("status") or "").lower()
+        if status in status_counts:
+            status_counts[status] += 1
+
+    sensor_stats = _build_sensor_stats(selected_readings)
+    warning_timestamps = [
+        reading.get("timestamp")
+        for reading in selected_warning_events
+        if reading.get("timestamp")
+    ]
+
+    return {
+        "machine_id": machine_id,
+        "date": selected_date.isoformat(),
+        "summary": {
+            "total_readings": len(selected_readings),
+            "running_count": status_counts["running"],
+            "warning_count": status_counts["warning"],
+            "fault_count": status_counts["fault"],
+            "current_state": machine_state.get(machine_id, {}),
+        },
+        "sensor_stats": sensor_stats,
+        "warnings_today": {
+            "count": len(selected_warning_events),
+            "timestamps": warning_timestamps[:20],
+            "latest": warning_timestamps[-1] if warning_timestamps else None,
+            "events": [_serialize_warning_event(item) for item in selected_warning_events[-10:]],
+        },
+        "warning_history": {
+            "total_count": len(warning_events),
+            "daily_counts": _warning_counts_by_day(warning_events),
+            "recent_events": [_serialize_warning_event(item) for item in warning_events[-20:]],
+        },
+        "alerts": {
+            "count": len(machine_alerts),
+            "recent": machine_alerts[:10],
+        },
+        "maintenance": {
+            "count": len(machine_maintenance),
+            "recent": machine_maintenance[:10],
         },
     }
 
