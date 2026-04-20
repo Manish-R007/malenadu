@@ -47,6 +47,27 @@ python backend/server.py
 # Or: uvicorn backend.server:app --host 0.0.0.0 --port 8000 --reload
 ```
 
+Kafka-backed live mode:
+```bash
+set PM_DATA_SOURCE=kafka
+set KAFKA_BOOTSTRAP_SERVERS=localhost:9092
+set KAFKA_TOPIC=machine.telemetry
+python backend/server.py
+```
+
+Kafka message shape:
+```json
+{
+  "machine_id": "CNC_01",
+  "timestamp": "2026-04-20T10:15:00Z",
+  "temperature_C": 84.2,
+  "vibration_mm_s": 2.31,
+  "rpm": 1485,
+  "current_A": 13.8,
+  "status": "running"
+}
+```
+
 ### 4. Start the autonomous agent loop (separate terminal)
 ```bash
 python backend/agent.py
@@ -69,6 +90,7 @@ Open `frontend/dashboard.html` in your browser.
 | `/status` | GET | Health + all machine states |
 | `/alerts` | GET | Alert priority queue |
 | `/dashboard-data` | GET | Snapshot for polling |
+| `PM_DATA_SOURCE=kafka` | env | Consume live telemetry from Kafka instead of simulator |
 
 Machine IDs: `CNC_01`, `CNC_02`, `HVAC_01`, `PUMP_01`
 

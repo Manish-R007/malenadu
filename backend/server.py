@@ -25,15 +25,20 @@ import json
 import os
 import sys
 import uuid
-from collections import defaultdict
+from collections import defaultdict, deque
 from datetime import date, datetime, timezone
-from typing import Dict, List, Optional
+from typing import Deque, Dict, List, Optional
 
 import aiohttp
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
+
+try:
+    from aiokafka import AIOKafkaConsumer
+except ImportError:
+    AIOKafkaConsumer = None
 
 # ── Add project root to path ──────────────────────────────────────────────────
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
@@ -56,16 +61,23 @@ machine_state:   Dict[str, dict]          = {}   # latest reading per machine
 alert_priority_queue: List[dict]          = []   # sorted by risk_score desc
 dashboard_subscribers: List[asyncio.Queue] = []
 machine_subscribers: List[asyncio.Queue] = []
+machine_history: Dict[str, Deque[dict]] = defaultdict(deque)
+kafka_consumer_task: Optional[asyncio.Task] = None
 
 MACHINES = ["CNC_01", "CNC_02", "PUMP_03", "CONVEYOR_04"]
 NODE_BASE_URL = os.environ.get("MALENDAU_BASE_URL", "http://localhost:3000")
 HTTP_TIMEOUT = aiohttp.ClientTimeout(total=20)
+DATA_SOURCE_MODE = os.environ.get("PM_DATA_SOURCE", "simulator").strip().lower()
+KAFKA_BOOTSTRAP_SERVERS = os.environ.get("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
+KAFKA_TOPIC = os.environ.get("KAFKA_TOPIC", "machine.telemetry")
+KAFKA_GROUP_ID = os.environ.get("KAFKA_GROUP_ID", "predictamaint-backend")
+MAX_HISTORY_PER_MACHINE = int(os.environ.get("PM_MAX_HISTORY_PER_MACHINE", "10080"))
 
 
 # ── Startup ───────────────────────────────────────────────────────────────────
 @app.on_event("startup")
 async def startup():
-    global scorer_registry
+    global scorer_registry, kafka_consumer_task
     try:
         scorer_registry = ScorerRegistry()
         print("[server] ScorerRegistry loaded ✓")
@@ -73,6 +85,29 @@ async def startup():
         print(f"[server] WARNING: {e}")
         print("[server] Run `python ml/train_model.py` first, then restart.")
         scorer_registry = None
+
+    if DATA_SOURCE_MODE == "kafka":
+        if AIOKafkaConsumer is None:
+            raise RuntimeError(
+                "Kafka mode requires aiokafka. Install requirements and restart."
+            )
+        kafka_consumer_task = asyncio.create_task(_consume_kafka_stream())
+        print(
+            f"[server] Kafka consumer started for topic={KAFKA_TOPIC} "
+            f"bootstrap={KAFKA_BOOTSTRAP_SERVERS}"
+        )
+
+
+@app.on_event("shutdown")
+async def shutdown():
+    global kafka_consumer_task
+    if kafka_consumer_task:
+        kafka_consumer_task.cancel()
+        try:
+            await kafka_consumer_task
+        except asyncio.CancelledError:
+            pass
+        kafka_consumer_task = None
 
 
 async def _request_node(method: str, path: str, *, json_body: Optional[dict] = None):
@@ -230,6 +265,138 @@ def _serialize_warning_event(reading: dict) -> dict:
     }
 
 
+def _normalize_machine_id(machine_id: Optional[str]) -> Optional[str]:
+    if not machine_id:
+        return None
+    machine_id = str(machine_id).strip().upper()
+    return machine_id if machine_id in MACHINES else None
+
+
+def _coerce_float(value):
+    if value is None or value == "":
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _prepare_reading(payload: dict) -> dict:
+    machine_id = _normalize_machine_id(payload.get("machine_id"))
+    if not machine_id:
+        raise ValueError("Missing or unknown machine_id in telemetry payload.")
+
+    reading = dict(payload)
+    reading["machine_id"] = machine_id
+    reading["timestamp"] = (
+        payload.get("timestamp") or datetime.now(timezone.utc).isoformat()
+    )
+
+    for sensor in ["temperature_C", "vibration_mm_s", "rpm", "current_A"]:
+        numeric = _coerce_float(reading.get(sensor))
+        if numeric is not None:
+            reading[sensor] = numeric
+
+    status = str(reading.get("status") or "running").strip().lower()
+    reading["status"] = status if status else "running"
+    return reading
+
+
+def _score_reading(machine_id: str, reading: dict) -> dict:
+    if scorer_registry:
+        scored = scorer_registry.score(machine_id, reading)
+        if scored:
+            return scored
+    return {
+        **reading,
+        "risk_score": 0.0,
+        "risk_level": "unknown",
+        "explanation": "Model not loaded.",
+    }
+
+
+def _remember_reading(machine_id: str, reading: dict):
+    history = machine_history[machine_id]
+    history.append(reading)
+    while len(history) > MAX_HISTORY_PER_MACHINE:
+        history.popleft()
+
+
+async def _ingest_machine_reading(reading: dict) -> dict:
+    machine_id = reading["machine_id"]
+    scored = _score_reading(machine_id, reading)
+    machine_state[machine_id] = scored
+    _remember_reading(machine_id, scored)
+    await _publish_machine_event(scored)
+    return scored
+
+
+async def _consume_kafka_stream():
+    consumer = AIOKafkaConsumer(
+        KAFKA_TOPIC,
+        bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
+        group_id=KAFKA_GROUP_ID,
+        auto_offset_reset="latest",
+        enable_auto_commit=True,
+    )
+    await consumer.start()
+    try:
+        async for message in consumer:
+            try:
+                payload = json.loads(message.value.decode("utf-8"))
+                reading = _prepare_reading(payload)
+                await _ingest_machine_reading(reading)
+            except Exception as exc:
+                print(f"[server] Dropped Kafka message: {exc}")
+    finally:
+        await consumer.stop()
+
+
+def _get_machine_history(machine_id: str, limit: Optional[int] = None) -> List[dict]:
+    readings = list(machine_history.get(machine_id, []))
+    if limit is not None:
+        return readings[-limit:]
+    return readings
+
+
+def _merge_history_readings(*sources: List[dict], limit: Optional[int] = None) -> List[dict]:
+    merged: Dict[str, dict] = {}
+
+    for readings in sources:
+        for reading in readings or []:
+            timestamp = reading.get("timestamp")
+            machine_id = reading.get("machine_id")
+            key = f"{machine_id}|{timestamp}" if timestamp else None
+            if key:
+                merged[key] = reading
+
+    ordered = sorted(
+        merged.values(),
+        key=lambda reading: _parse_timestamp(reading.get("timestamp")) or datetime.min.replace(tzinfo=timezone.utc),
+    )
+    if limit is not None:
+        return ordered[-limit:]
+    return ordered
+
+
+async def _get_remote_alerts() -> List[dict]:
+    if DATA_SOURCE_MODE == "kafka":
+        return list(alerts_store)
+
+    node_alerts = await _request_node("GET", "/alerts")
+    return _enrich_node_alerts(node_alerts.get("alerts", []), 200)["alerts"]
+
+
+async def _get_machine_history_source(machine_id: str, limit: Optional[int] = None) -> List[dict]:
+    if DATA_SOURCE_MODE == "kafka":
+        return _get_machine_history(machine_id, limit)
+
+    data = await _request_node("GET", f"/history/{machine_id}")
+    remote_readings = data.get("readings", [])
+    live_readings = _get_machine_history(machine_id)
+    return _merge_history_readings(remote_readings, live_readings, limit=limit)
+
+
 def _warning_counts_by_day(readings: List[dict]) -> List[dict]:
     grouped: Dict[str, dict] = defaultdict(lambda: {"warning": 0, "fault": 0})
     for reading in readings:
@@ -256,6 +423,31 @@ async def stream(machine_id: str, request: Request):
         raise HTTPException(status_code=404, detail=f"Unknown machine_id: {machine_id}")
 
     async def generator():
+        if DATA_SOURCE_MODE == "kafka":
+            queue: asyncio.Queue = asyncio.Queue(maxsize=200)
+            machine_subscribers.append(queue)
+
+            snapshot = machine_state.get(machine_id)
+            if snapshot:
+                yield f"data: {json.dumps(snapshot)}\n\n"
+
+            try:
+                while not await request.is_disconnected():
+                    try:
+                        event = await asyncio.wait_for(queue.get(), timeout=15)
+                    except asyncio.TimeoutError:
+                        yield ": keep-alive\n\n"
+                        continue
+
+                    payload = event.get("payload") or {}
+                    if payload.get("machine_id") != machine_id:
+                        continue
+                    yield f"data: {json.dumps(payload)}\n\n"
+            finally:
+                if queue in machine_subscribers:
+                    machine_subscribers.remove(queue)
+            return
+
         consecutive_gaps = 0
         timeout = aiohttp.ClientTimeout(total=None, sock_read=15)
 
@@ -274,22 +466,9 @@ async def stream(machine_id: str, request: Request):
                             if not line or not line.startswith("data:"):
                                 continue
 
-                            reading = json.loads(line[5:].strip())
-
-                            if scorer_registry:
-                                scored = scorer_registry.score(machine_id, reading)
-                            else:
-                                scored = {
-                                    **reading,
-                                    "risk_score": 0.0,
-                                    "risk_level": "unknown",
-                                    "explanation": "Model not loaded.",
-                                }
-
-                            machine_state[machine_id] = scored
-
+                            reading = _prepare_reading(json.loads(line[5:].strip()))
+                            scored = await _ingest_machine_reading(reading)
                             consecutive_gaps = 0
-                            await _publish_machine_event(scored)
                             yield f"data: {json.dumps(scored)}\n\n"
 
             except asyncio.CancelledError:
@@ -317,8 +496,7 @@ async def stream(machine_id: str, request: Request):
 async def get_history(machine_id: str, limit: int = 500):
     if machine_id not in MACHINES:
         raise HTTPException(status_code=404, detail=f"Unknown machine_id: {machine_id}")
-    data = await _request_node("GET", f"/history/{machine_id}")
-    readings = data.get("readings", [])[-limit:]
+    readings = await _get_machine_history_source(machine_id, limit)
     return {"machine_id": machine_id, "count": len(readings), "data": readings}
 
 
@@ -362,19 +540,21 @@ class AlertRequest(BaseModel):
 
 @app.post("/alert")
 async def raise_alert(payload: AlertRequest):
-    node_data = await _request_node("POST", "/alert", json_body={
-        "machine_id": payload.machine_id,
-        "reason": payload.reason,
-        "reading": payload.sensor_data or {},
-    })
-    node_alert = node_data.get("alert", {})
+    node_alert = {}
+    if DATA_SOURCE_MODE != "kafka":
+        node_data = await _request_node("POST", "/alert", json_body={
+            "machine_id": payload.machine_id,
+            "reason": payload.reason,
+            "reading": payload.sensor_data or {},
+        })
+        node_alert = node_data.get("alert", {})
     alert = _record_local_alert(
         payload.machine_id,
         payload.reason,
         payload.risk_score,
         payload.sensor_data,
-        node_alert_id=node_alert.get("id"),
-        timestamp=node_alert.get("triggered_at"),
+        node_alert_id=node_alert.get("id") if node_alert else None,
+        timestamp=node_alert.get("triggered_at") if node_alert else None,
     )
     await _publish_dashboard_event("alert", alert)
     return {"status": "alert_raised", "alert": alert}
@@ -391,22 +571,34 @@ class ScheduleRequest(BaseModel):
 
 @app.post("/schedule-maintenance")
 async def schedule_maintenance(payload: ScheduleRequest):
-    node_data = await _request_node("POST", "/schedule-maintenance", json_body={
-        "machine_id": payload.machine_id,
-        "priority": payload.priority,
-        "risk_score": payload.risk_score,
-    })
-    booking = node_data.get("booking", {})
-    slot = {
-        "booking_id": booking.get("id"),
-        "machine_id": booking.get("machine_id", payload.machine_id),
-        "priority": payload.priority,
-        "risk_score": booking.get("risk_score", payload.risk_score),
-        "scheduled_at": booking.get("slot"),
-        "alert_id": payload.alert_id,
-        "requested_by": payload.requested_by,
-        "status": "confirmed",
-    }
+    if DATA_SOURCE_MODE != "kafka":
+        node_data = await _request_node("POST", "/schedule-maintenance", json_body={
+            "machine_id": payload.machine_id,
+            "priority": payload.priority,
+            "risk_score": payload.risk_score,
+        })
+        booking = node_data.get("booking", {})
+        slot = {
+            "booking_id": booking.get("id"),
+            "machine_id": booking.get("machine_id", payload.machine_id),
+            "priority": payload.priority,
+            "risk_score": booking.get("risk_score", payload.risk_score),
+            "scheduled_at": booking.get("slot"),
+            "alert_id": payload.alert_id,
+            "requested_by": payload.requested_by,
+            "status": "confirmed",
+        }
+    else:
+        slot = {
+            "booking_id": str(uuid.uuid4())[:8],
+            "machine_id": payload.machine_id,
+            "priority": payload.priority,
+            "risk_score": payload.risk_score,
+            "scheduled_at": datetime.now(timezone.utc).isoformat(),
+            "alert_id": payload.alert_id,
+            "requested_by": payload.requested_by,
+            "status": "confirmed",
+        }
     maintenance_store[:] = [
         item for item in maintenance_store
         if item.get("machine_id") != slot["machine_id"]
@@ -454,26 +646,25 @@ async def dashboard_events(request: Request):
 # ── Status / dashboard endpoints ──────────────────────────────────────────────
 @app.get("/status")
 async def status():
-    node_alerts = await _request_node("GET", "/alerts")
     return {
         "machines": MACHINES,
         "model_loaded": scorer_registry is not None,
-        "active_alerts": node_alerts.get("count", 0),
+        "data_source": DATA_SOURCE_MODE,
+        "active_alerts": len(await _get_remote_alerts()),
         "machine_states": machine_state,
     }
 
 
 @app.get("/alerts")
 async def get_alerts(limit: int = 50):
-    node_alerts = await _request_node("GET", "/alerts")
-    return _enrich_node_alerts(node_alerts.get("alerts", []), limit)
+    alerts = await _get_remote_alerts()
+    return {"count": len(alerts), "alerts": _sort_alerts_by_risk(alerts)[:limit]}
 
 
 @app.get("/dashboard-data")
 async def dashboard_data():
     """Polling endpoint for the frontend dashboard."""
-    node_alerts = await _request_node("GET", "/alerts")
-    enriched_alerts = _enrich_node_alerts(node_alerts.get("alerts", []), 10)
+    enriched_alerts = _sort_alerts_by_risk(await _get_remote_alerts())[:10]
     ranked_machines = sorted(
         [
             {
@@ -490,8 +681,9 @@ async def dashboard_data():
     )
     return {
         "timestamp":    datetime.now(timezone.utc).isoformat(),
+        "data_source": DATA_SOURCE_MODE,
         "machine_states": machine_state,
-        "recent_alerts": enriched_alerts["alerts"],
+        "recent_alerts": enriched_alerts,
         "recent_maintenance": maintenance_store[:10],
         "ranked_machines": ranked_machines,
         "summary": {
@@ -514,8 +706,7 @@ async def machine_analytics(machine_id: str, for_date: Optional[str] = None):
     except ValueError as exc:
         raise HTTPException(status_code=400, detail="for_date must be in YYYY-MM-DD format") from exc
 
-    history_payload = await _request_node("GET", f"/history/{machine_id}")
-    readings = history_payload.get("readings", [])
+    readings = await _get_machine_history_source(machine_id)
 
     dated_readings = []
     for reading in readings:
@@ -537,8 +728,7 @@ async def machine_analytics(machine_id: str, for_date: Optional[str] = None):
         if (reading.get("status") or "").lower() in {"warning", "fault"}
     ]
 
-    node_alerts = await _request_node("GET", "/alerts")
-    enriched_alerts = _enrich_node_alerts(node_alerts.get("alerts", []), limit=200)["alerts"]
+    enriched_alerts = _sort_alerts_by_risk(await _get_remote_alerts())
     machine_alerts = [
         alert for alert in enriched_alerts
         if alert.get("machine_id") == machine_id
@@ -565,6 +755,7 @@ async def machine_analytics(machine_id: str, for_date: Optional[str] = None):
     return {
         "machine_id": machine_id,
         "date": selected_date.isoformat(),
+        "data_source": DATA_SOURCE_MODE,
         "summary": {
             "total_readings": len(selected_readings),
             "running_count": status_counts["running"],

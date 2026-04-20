@@ -785,7 +785,13 @@
   }
 
   .analytics-panel {
-    grid-column: 1 / -1;
+    display: block;
+    width: 100%;
+    visibility: visible;
+    opacity: 1;
+    margin-top: 2px;
+    border: 1px solid rgba(91, 231, 255, 0.22);
+    box-shadow: 0 24px 52px rgba(0, 0, 0, 0.28);
   }
 
   .analytics-toolbar {
@@ -836,6 +842,7 @@
     display: grid;
     grid-template-columns: 1.2fr 1fr;
     gap: 12px;
+    width: 100%;
   }
 
   .analytics-stack {
@@ -951,6 +958,21 @@
   @media (max-width: 960px) {
     .analytics-grid {
       grid-template-columns: 1fr;
+    }
+  }
+
+  @media (max-width: 680px) {
+    .analytics-summary-grid,
+    .analytics-sensor-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .analytics-control {
+      min-width: 100%;
+    }
+
+    .analytics-refresh {
+      width: 100%;
     }
   }
 
@@ -1250,6 +1272,7 @@ let opsFeed = [];
 let dashboardEventsSource = null;
 let analyticsData = null;
 let analyticsError = "";
+let analyticsRefreshTimer = null;
 let analyticsSelection = {
   machineId: MACHINES[0],
   date: new Date().toISOString().slice(0, 10),
@@ -1673,6 +1696,10 @@ function formatAnalyticsTimestamp(value) {
   return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleString();
 }
 
+function analyticsTracksToday() {
+  return analyticsSelection.date === new Date().toISOString().slice(0, 10);
+}
+
 function renderAnalytics() {
   const machineLabel = document.getElementById("analytics-machine-label");
   const dateLabel = document.getElementById("analytics-date-label");
@@ -1699,7 +1726,7 @@ function renderAnalytics() {
     return;
   }
 
-  status.textContent = "LIVE";
+  status.textContent = analyticsTracksToday() ? "LIVE" : "READY";
   const summary = analyticsData.summary || {};
   const currentState = summary.current_state || {};
   summaryGrid.innerHTML = [
@@ -1707,6 +1734,7 @@ function renderAnalytics() {
     { key: "Warnings", value: summary.warning_count ?? 0, note: "Status=warning on selected day" },
     { key: "Faults", value: summary.fault_count ?? 0, note: "Status=fault on selected day" },
     { key: "Current Risk", value: Number(currentState.risk_score || 0).toFixed(3), note: (currentState.risk_level || "unknown").toUpperCase() },
+    { key: "Source", value: String(analyticsData.data_source || "unknown").toUpperCase(), note: analyticsTracksToday() ? "Auto-refresh active" : "Historical date selected" },
   ].map(item => `
     <div class="analytics-summary-item">
       <div class="analytics-key">${item.key}</div>
@@ -1824,6 +1852,15 @@ function initAnalyticsControls() {
 
   refreshBtn.addEventListener("click", loadAnalytics);
   renderAnalytics();
+}
+
+function startAnalyticsAutoRefresh() {
+  if (analyticsRefreshTimer) clearInterval(analyticsRefreshTimer);
+  analyticsRefreshTimer = setInterval(() => {
+    if (analyticsTracksToday() && document.visibilityState !== "hidden") {
+      loadAnalytics();
+    }
+  }, 5000);
 }
 
 function drawChart() {
@@ -2075,6 +2112,7 @@ async function initDashboard() {
   await loadInitialHistory();
   await pollDashboardData();
   await loadAnalytics();
+  startAnalyticsAutoRefresh();
   connectDashboardEvents();
   MACHINES.forEach(connectMachine);
   setInterval(pollDashboardData, 3000);
